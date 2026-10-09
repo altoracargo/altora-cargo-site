@@ -46,6 +46,13 @@ ol.steps .d{display:block;font-weight:400;font-size:14px}
 .lang button{background:#fff;color:var(--navy);border-radius:0;padding:8px 14px;font-weight:700}
 .lang button.on{background:var(--navy);color:#fff}
 .adm .lang{display:none}
+.tabs{display:flex;gap:8px;margin-bottom:26px}
+.tabs button{background:transparent;color:#fff;border:1px solid #7f98c4;padding:9px 18px}
+.tabs button.on{background:var(--gold);color:#1b1500;border-color:var(--gold)}
+.atabs{margin:0 0 14px}
+.atabs button{background:#e8ecf4;color:var(--ink);border:1px solid var(--line)}
+.atabs button.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+.badge{display:inline-block;background:var(--gold-l);color:var(--navy);border-radius:6px;padding:2px 10px;font-size:14px;margin-left:10px;vertical-align:middle}
 footer{text-align:center;color:var(--mute);font-size:13px;padding-bottom:30px}
 footer a{color:var(--mute)}
 .login{max-width:380px;margin:0 auto;background:#fff;border:1px solid var(--line);border-radius:10px;padding:24px;display:grid;gap:12px}
@@ -79,63 +86,60 @@ td input.has{border-color:var(--gold);background:#fffaf0}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-/* ===== 설정: 아래 URL만 본인 것으로 바꾸세요 ===== */
+/* ===== 설정: 아래 값은 이미 본인 것으로 들어 있습니다 ===== */
 const SUPABASE_URL = "https://piwahidjmhnunaswhrgb.supabase.co";
 const SUPABASE_KEY = "sb_publishable_u5WXeoGR8I88MSuJ0Ev4Wg_ZFeEFPLF";
-/* ============================================= */
+/* ======================================================= */
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-const STAGES = [
-  ["d1_altora_in","ALTORA 입고"],
-  ["d2_airport_in","공항반입"],
-  ["d3_icn_depart","인천 출발"],
-  ["d4_ub_arrive","올란바타르 도착"],
-  ["d5_customs_done","통관완료"],
-  ["d6_branch_arrive","ALTORA 지사 도착"]
-];
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const norm = s => String(s ?? "").replace(/\s+/g, "").toLowerCase();
 const app = $("#app");
+
+/* 단계: [DB 칸 이름, 한국어, 몽골어] */
+const MODES = {
+  air: { tbl: "shipments", rpc: "track", file: "항공", stages: [
+    ["d1_altora_in", "ALTORA 입고", "ALTORA агуулахад хүлээн авсан"],
+    ["d2_airport_in", "공항반입", "Нисэх онгоцны буудалд оруулсан"],
+    ["d3_icn_depart", "인천 출발", "Инчоноос ниссэн"],
+    ["d4_ub_arrive", "올란바타르 도착", "Улаанбаатарт ирсэн"],
+    ["d5_customs_done", "통관완료", "Гаалийн бүрдүүлэлт хийгдсэн"],
+    ["d6_branch_arrive", "ALTORA 지사 도착", "ALTORA салбарт ирсэн"] ] },
+  sea: { tbl: "sea_shipments", rpc: "track_sea", file: "해상", stages: [
+    ["d1_altora_in", "ALTORA 입고", "ALTORA агуулахад хүлээн авсан"],
+    ["d2_cn_arrive", "중국 도착", "Хятадад ирсэн"],
+    ["d3_cn_depart", "중국 출발", "Хятадаас гарсан"],
+    ["d4_erl_arrive", "얼리안 도착", "Эрээнд ирсэн"],
+    ["d5_erl_depart", "얼리안 출발", "Эрээнээс гарсан"],
+    ["d6_zam_arrive", "자민우드 도착", "Замын-Үүдэд ирсэн"],
+    ["d7_zam_depart", "자민우드 출발", "Замын-Үүдээс гарсан"],
+    ["d8_ub_arrive", "올란바타르 도착 (세관 통관 중)", "Улаанбаатарт ирсэн (гаалийн бүрдүүлэлт хийгдэж байна)"],
+    ["d9_branch_arrive", "ALTORA 지사 도착", "ALTORA салбарт ирсэн"] ] }
+};
+const SEA_RE = /^(ORA|ALT)-\d+$/i;
+const kindOf = c => /^ORA-/i.test(c || "") ? "general" : /^ALT-/i.test(c || "") ? "express" : "";
 
 /* ---------- 언어 (고객 화면: 한국어 / 몽골어) ---------- */
 const TXT = {
-  kr: {
-    doc: "ALTORA CARGO 화물 조회",
-    title: "내 화물이 지금 어디에 있는지 확인하세요",
-    sub: "화물 번호를 입력하세요.",
-    ph: "화물 번호 입력",
-    go: "조회하기",
-    wait: "조회 중입니다...",
-    fail: "조회에 실패했습니다. 잠시 후 다시 시도하세요.",
-    none: "일치하는 화물이 없습니다. 화물 번호를 다시 확인하세요.",
-    cargo: "화물 번호",
-    cur: "현재 위치",
-    notyet: "아직 접수 전입니다.",
-    plan: "예정",
-    admin: "관리자",
-    stages: ["ALTORA 입고", "공항반입", "인천 출발", "올란바타르 도착", "통관완료", "ALTORA 지사 도착"]
-  },
-  mn: {
-    doc: "ALTORA CARGO ачаа шалгах",
-    title: "Таны ачаа одоо хаана байгааг шалгана уу",
-    sub: "Ачааны дугаараа оруулна уу.",
-    ph: "Ачааны дугаар",
-    go: "Шалгах",
-    wait: "Шалгаж байна...",
-    fail: "Шалгаж чадсангүй. Түр хүлээгээд дахин оролдоно уу.",
-    none: "Тохирох ачаа олдсонгүй. Ачааны дугаараа дахин шалгана уу.",
-    cargo: "Ачааны дугаар",
-    cur: "Одоогийн байршил",
-    notyet: "Ачаа хараахан бүртгэгдээгүй байна.",
-    plan: "Хүлээгдэж байна",
-    admin: "Админ",
-    stages: ["ALTORA агуулахад хүлээн авсан", "Нисэх онгоцны буудалд оруулсан", "Инчоноос ниссэн", "Улаанбаатарт ирсэн", "Гаалийн бүрдүүлэлт хийгдсэн", "ALTORA салбарт ирсэн"]
-  }
+  kr: { doc: "ALTORA CARGO 화물 조회", title: "내 화물이 지금 어디에 있는지 확인하세요", sub: "화물 번호를 입력하세요.",
+    ph: "화물 번호 입력", phSea: "ORA-0000 또는 ALT-0000", go: "조회하기", wait: "조회 중입니다...",
+    fail: "조회에 실패했습니다. 잠시 후 다시 시도하세요.", none: "일치하는 화물이 없습니다. 화물 번호를 다시 확인하세요.",
+    hintSea: "ORA-, ALT-로 시작하는 번호는 '해상 화물' 탭에서 조회하세요.",
+    cargo: "화물 번호", cur: "현재 위치", notyet: "아직 접수 전입니다.", plan: "예정", admin: "관리자",
+    air: "항공 화물", sea: "해상 화물", general: "일반", express: "익스프레스" },
+  mn: { doc: "ALTORA CARGO ачаа шалгах", title: "Таны ачаа одоо хаана байгааг шалгана уу", sub: "Ачааны дугаараа оруулна уу.",
+    ph: "Ачааны дугаар", phSea: "ORA-0000 эсвэл ALT-0000", go: "Шалгах", wait: "Шалгаж байна...",
+    fail: "Шалгаж чадсангүй. Түр хүлээгээд дахин оролдоно уу.", none: "Тохирох ачаа олдсонгүй. Ачааны дугаараа дахин шалгана уу.",
+    hintSea: "ORA-, ALT-ээр эхэлсэн дугаарыг «Далайн ачаа» цэсээр шалгана уу.",
+    cargo: "Ачааны дугаар", cur: "Одоогийн байршил", notyet: "Ачаа хараахан бүртгэгдээгүй байна.", plan: "Хүлээгдэж байна", admin: "Админ",
+    air: "Агаарын ачаа", sea: "Далайн ачаа", general: "Энгийн", express: "Экспресс" }
 };
 let LANG = "kr";
 try { LANG = localStorage.getItem("lang") === "mn" ? "mn" : "kr"; } catch (e) {}
 const T = k => TXT[LANG][k];
-let lastQ = "";
+let lastQ = "", CM = "air", AM = "air", ALL = [], PAGE = 0;
+const PAGE_SIZE = 50;
 
 function setLang(l){
   LANG = l;
@@ -150,7 +154,6 @@ function applyLang(){
   if (fa) fa.textContent = T("admin");
   document.querySelectorAll(".lang button").forEach(b => b.classList.toggle("on", b.dataset.l === LANG));
 }
-
 function route(){
   const adm = location.hash === "#admin";
   document.body.classList.toggle("adm", adm);
@@ -162,51 +165,52 @@ window.addEventListener("hashchange", route);
 function showTrack(){
   app.innerHTML = `
     <section class="hero"><div>
+      <div class="tabs">${["air", "sea"].map(m => `<button type="button" data-m="${m}" class="${m === CM ? "on" : ""}">${T(m)}</button>`).join("")}</div>
       <h1>${T("title")}</h1>
       <p>${T("sub")}</p>
       <form class="search" id="f">
-        <input type="text" id="q" placeholder="${T("ph")}" required>
+        <input type="text" id="q" placeholder="${T(CM === "sea" ? "phSea" : "ph")}" required>
         <button>${T("go")}</button>
       </form>
     </div></section>
     <main><div id="out"></div></main>`;
+  document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => { CM = b.dataset.m; lastQ = ""; showTrack(); });
   $("#f").onsubmit = e => { e.preventDefault(); search($("#q").value.trim()); };
   if (lastQ) { $("#q").value = lastQ; search(lastQ); }
 }
 
 async function search(q){
   lastQ = q;
-  const out = $("#out");
+  const out = $("#out"), m = CM;
   out.innerHTML = `<p class="msg">${T("wait")}</p>`;
-  const { data, error } = await sb.rpc("track", { q });
+  const { data, error } = await sb.rpc(MODES[m].rpc, { q });
+  if (m !== CM) return;
   if (error) { out.innerHTML = `<p class="msg err">${T("fail")}</p>`; return; }
-  if (!data.length) { out.innerHTML = `<p class="msg">${T("none")}</p>`; return; }
-  out.innerHTML = data.map(card).join("");
+  if (!data.length) { out.innerHTML = `<p class="msg">${T("none")}${m === "air" && SEA_RE.test(q) ? " " + T("hintSea") : ""}</p>`; return; }
+  out.innerHTML = data.map(s => card(s, m)).join("");
 }
 
-function card(s){
+function card(s, m){
+  const S = MODES[m].stages, n = LANG === "mn" ? 2 : 1;
   let cur = -1;
-  STAGES.forEach(([k], i) => { if (s[k]) cur = i; });
-  const L = TXT[LANG].stages;
-  const now = cur < 0 ? T("notyet") : `${T("cur")}: ${L[cur]} (${s[STAGES[cur][0]]})`;
-  const steps = STAGES.map(([k], i) => {
-    const cls = i === cur ? "cur" : s[k] ? "done" : "";
-    return `<li class="${cls}">${L[i]}<span class="d">${s[k] ? esc(s[k]) : T("plan")}</span></li>`;
+  S.forEach(([k], i) => { if (s[k]) cur = i; });
+  const now = cur < 0 ? T("notyet") : `${T("cur")}: ${S[cur][n]} (${s[S[cur][0]]})`;
+  const steps = S.map((st, i) => {
+    const cls = i === cur ? "cur" : s[st[0]] ? "done" : "";
+    return `<li class="${cls}">${st[n]}<span class="d">${s[st[0]] ? esc(s[st[0]]) : T("plan")}</span></li>`;
   }).join("");
+  const kind = m === "sea" && kindOf(s.cargo_no) ? `<span class="badge">${T(kindOf(s.cargo_no))}</span>` : "";
   return `<div class="ship">
-    <h2 style="margin-bottom:14px">${T("cargo")} ${esc(s.cargo_no)}</h2>
+    <h2 style="margin-bottom:14px">${T("cargo")} ${esc(s.cargo_no)}${kind}</h2>
     <div class="now">${esc(now)}</div>
     <ol class="steps">${steps}</ol></div>`;
 }
 
 /* ---------- 관리자 화면 ---------- */
-let ALL = [];
-const norm = s => String(s ?? "").replace(/\s+/g, "").toLowerCase();
-
 async function fetchAll(cols){
   let all = [], from = 0;
   for (;;) {
-    const { data, error } = await sb.from("shipments").select(cols).order("id").range(from, from + 999);
+    const { data, error } = await sb.from(MODES[AM].tbl).select(cols).order("id").range(from, from + 999);
     if (error) throw error;
     all = all.concat(data);
     if (data.length < 1000) break;
@@ -218,12 +222,14 @@ async function fetchAll(cols){
 async function showAdmin(){
   const { data:{ session } } = await sb.auth.getSession();
   if (!session) return loginView();
+  const S = MODES[AM].stages, sea = AM === "sea";
   app.innerHTML = `<main style="max-width:1400px">
     <div class="bar"><b style="color:var(--navy);font-size:20px;flex:1 1 auto">관리자</b>
       <button class="plain" id="out">로그아웃</button></div>
+    <div class="tabs atabs">${["air", "sea"].map(m => `<button type="button" data-m="${m}" class="${m === AM ? "on" : ""}">${MODES[m].file} 화물</button>`).join("")}</div>
     <div class="panel">
-      <b>엑셀로 한꺼번에 올리기</b>
-      <p class="msg">첫 줄에 <b>화물번호</b>와 6개 단계 이름을 쓰고, 날짜는 2026-10-09 형식으로 입력하세요. 이미 있는 화물번호는 입력한 칸만 수정됩니다.</p>
+      <b>${MODES[AM].file} 화물: 엑셀로 한꺼번에 올리기</b>
+      <p class="msg">첫 줄에 <b>화물번호</b>와 ${S.length}개 단계 이름을 쓰고, 날짜는 2026-10-09 형식으로 입력하세요. 이미 있는 화물번호는 입력한 칸만 수정됩니다.${sea ? " 해상 화물번호는 <b>ORA-0000</b>(일반) 또는 <b>ALT-0000</b>(익스프레스) 형식입니다." : ""}</p>
       <div class="bar"><button class="plain" id="tpl">엑셀 양식 내려받기</button>
         <button id="up">엑셀 파일 올리기</button>
         <input type="file" id="file" accept=".xlsx,.xls,.csv" hidden></div>
@@ -231,28 +237,32 @@ async function showAdmin(){
     </div>
     <div class="bar">
       <input type="text" id="sq" placeholder="화물 번호 검색">
-      <input type="text" id="nc" placeholder="화물 번호 (한 건 추가)">
+      <input type="text" id="nc" placeholder="${sea ? "ORA-0000 또는 ALT-0000 (한 건 추가)" : "화물 번호 (한 건 추가)"}">
       <button class="plain" id="add">한 건 추가</button>
       <span id="st" class="saved"></span></div>
     <div class="wrap" id="grid"><p class="msg" style="padding:16px">불러오는 중...</p></div>
     <div class="bar" id="pg" style="margin-top:12px"></div></main>`;
+  document.querySelectorAll(".atabs button").forEach(b => b.onclick = () => { AM = b.dataset.m; PAGE = 0; showAdmin(); });
   $("#out").onclick = async () => { await sb.auth.signOut(); location.hash = ""; };
   $("#sq").oninput = () => { PAGE = 0; renderGrid(); };
   $("#add").onclick = async () => {
-    const cargo_no = $("#nc").value.trim();
+    let cargo_no = $("#nc").value.trim();
+    if (sea) cargo_no = cargo_no.toUpperCase();
     if (!cargo_no) return flash("화물 번호를 입력하세요.");
+    if (sea && !SEA_RE.test(cargo_no)) return flash("ORA-0000 또는 ALT-0000 형식으로 입력하세요.");
     if (ALL.some(s => s.cargo_no === cargo_no)) return flash("이미 있는 화물 번호입니다.");
-    const { error } = await sb.from("shipments").insert({ cargo_no });
+    const { error } = await sb.from(MODES[AM].tbl).insert({ cargo_no });
     if (error) return flash("추가하지 못했습니다: " + error.message);
     $("#nc").value = ""; PAGE = 0; loadGrid();
   };
   $("#tpl").onclick = () => {
-    const head = ["화물번호", ...STAGES.map(s => s[1])];
-    const ws = XLSX.utils.aoa_to_sheet([head, ["TEST001", "2026-10-01", "2026-10-02", "", "", "", ""]]);
+    const head = ["화물번호", ...S.map(s => s[1])];
+    const ex = sea ? [["ORA-0001", "2026-10-01", "2026-10-03"], ["ALT-0001", "2026-10-01"]] : [["TEST001", "2026-10-01", "2026-10-02"]];
+    const ws = XLSX.utils.aoa_to_sheet([head, ...ex]);
     ws["!cols"] = head.map(() => ({ wch: 18 }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "화물");
-    XLSX.writeFile(wb, "ALTORA_화물_업로드_양식.xlsx");
+    XLSX.writeFile(wb, `ALTORA_${MODES[AM].file}화물_업로드_양식.xlsx`);
   };
   $("#up").onclick = () => $("#file").click();
   $("#file").onchange = async e => {
@@ -277,12 +287,13 @@ function fixDate(v){
 }
 
 async function importExcel(file, res){
+  const S = MODES[AM].stages, sea = AM === "sea", tbl = MODES[AM].tbl;
   const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
   const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { raw: false, dateNF: "yyyy-mm-dd", defval: "" });
   if (!rows.length) throw new Error("내용이 없는 파일입니다.");
 
   const alias = { cargo_no: ["화물번호", "cargono", "코드", "운송장번호"] };
-  STAGES.forEach(([k, label]) => alias[k] = [norm(label)]);
+  S.forEach(([k, l]) => alias[k] = [norm(l), norm(l.split(" (")[0])]);
   const colOf = key => Object.keys(alias).find(f => alias[f].includes(norm(key)));
   if (!Object.keys(rows[0]).some(k => colOf(k) === "cargo_no")) throw new Error("첫 줄에 '화물번호' 칸이 없습니다. 양식을 내려받아 사용하세요.");
 
@@ -292,35 +303,33 @@ async function importExcel(file, res){
     for (const [key, val] of Object.entries(r)) {
       const f = colOf(key);
       if (!f) continue;
-      if (f === "cargo_no") { const t = String(val).trim(); if (t) o[f] = t; }
+      if (f === "cargo_no") { let t = String(val).trim(); if (sea) t = t.toUpperCase(); if (t) o[f] = t; }
       else { const d = fixDate(val); if (d === null) errs.push(`${line}행 '${key}' 날짜 형식을 확인하세요 (${val})`); else if (d) o[f] = d; }
     }
     if (!o.cargo_no) { if (Object.keys(o).length) errs.push(`${line}행: 화물번호가 없습니다`); return; }
+    if (sea && !SEA_RE.test(o.cargo_no)) { errs.push(`${line}행: 해상 화물번호 형식이 아닙니다 (${o.cargo_no}). ORA-0000 또는 ALT-0000`); return; }
     map.set(o.cargo_no, { ...(map.get(o.cargo_no) || {}), ...o });
   });
 
   const cur = await fetchAll("id,cargo_no");
   const idOf = new Map(cur.filter(s => s.cargo_no).map(s => [s.cargo_no, s.id]));
   const toNew = [], toUpd = [];
-  for (const o of map.values()) {
-    if (idOf.has(o.cargo_no)) toUpd.push([idOf.get(o.cargo_no), o]);
-    else toNew.push(o);
-  }
+  for (const o of map.values()) idOf.has(o.cargo_no) ? toUpd.push([idOf.get(o.cargo_no), o]) : toNew.push(o);
   if (errs.length) {
     res.className = "msg err";
     res.innerHTML = "<b>고칠 곳이 있어 아무것도 올리지 않았습니다.</b><br>" + errs.slice(0, 10).map(esc).join("<br>") + (errs.length > 10 ? `<br>외 ${errs.length - 10}건` : "");
     return;
   }
   if (!toNew.length && !toUpd.length) throw new Error("올릴 화물이 없습니다.");
-  if (!confirm(`새 화물 ${toNew.length}건을 추가하고 기존 ${toUpd.length}건을 수정합니다. 올릴까요?`)) { res.textContent = ""; return; }
+  if (!confirm(`[${MODES[AM].file} 화물] 새 화물 ${toNew.length}건을 추가하고 기존 ${toUpd.length}건을 수정합니다. 올릴까요?`)) { res.textContent = ""; return; }
 
   res.textContent = "올리는 중...";
   for (let i = 0; i < toNew.length; i += 500) {
-    const { error } = await sb.from("shipments").insert(toNew.slice(i, i + 500));
+    const { error } = await sb.from(tbl).insert(toNew.slice(i, i + 500));
     if (error) throw error;
   }
   for (let i = 0; i < toUpd.length; i += 20) {
-    const r = await Promise.all(toUpd.slice(i, i + 20).map(([id, o]) => sb.from("shipments").update(o).eq("id", id)));
+    const r = await Promise.all(toUpd.slice(i, i + 20).map(([id, o]) => sb.from(tbl).update(o).eq("id", id)));
     const bad = r.find(x => x.error);
     if (bad) throw bad.error;
   }
@@ -336,16 +345,15 @@ async function loadGrid(){
   renderGrid();
 }
 
-let PAGE = 0;
-const PAGE_SIZE = 50;
 function stageNow(s){
   let c = -1;
-  STAGES.forEach(([k], i) => { if (s[k]) c = i; });
-  return c < 0 ? "-" : STAGES[c][1];
+  const S = MODES[AM].stages;
+  S.forEach(([k], i) => { if (s[k]) c = i; });
+  return c < 0 ? "-" : S[c][1].split(" (")[0];
 }
 
 function renderGrid(){
-  const g = $("#grid"), pg = $("#pg"), q = norm($("#sq") && $("#sq").value);
+  const g = $("#grid"), pg = $("#pg"), q = norm($("#sq") && $("#sq").value), S = MODES[AM].stages, sea = AM === "sea";
   pg.innerHTML = "";
   if (!ALL.length) { g.innerHTML = `<p class="msg" style="padding:16px">등록된 화물이 없습니다. 엑셀 파일을 올리거나 한 건을 추가하세요.</p>`; return; }
   const list = ALL.filter(s => !q || norm(s.cargo_no).includes(q)).reverse();
@@ -354,10 +362,13 @@ function renderGrid(){
   if (PAGE > pages - 1) PAGE = pages - 1;
   if (PAGE < 0) PAGE = 0;
   const show = list.slice(PAGE * PAGE_SIZE, (PAGE + 1) * PAGE_SIZE);
-  const head = `<tr><th>화물번호</th>${STAGES.map(([, l]) => `<th>${l}</th>`).join("")}<th>현재 단계</th><th></th></tr>`;
-  const rows = show.map(s => `<tr><th>${esc(s.cargo_no || "(번호 없음)")}</th>` +
-    STAGES.map(([k]) => `<td><input type="date" data-id="${s.id}" data-k="${k}" value="${s[k] || ""}" class="${s[k] ? "has" : ""}"></td>`).join("") +
-    `<td data-now="${s.id}">${stageNow(s)}</td><td><button class="plain" data-del="${s.id}">삭제</button></td></tr>`).join("");
+  const head = `<tr><th>화물번호</th>${S.map(s => `<th>${s[1].split(" (")[0]}</th>`).join("")}<th>현재 단계</th><th></th></tr>`;
+  const rows = show.map(s => {
+    const kd = sea && kindOf(s.cargo_no) ? `<br><small style="font-weight:400">${kindOf(s.cargo_no) === "general" ? "일반" : "익스프레스"}</small>` : "";
+    return `<tr><th>${esc(s.cargo_no || "(번호 없음)")}${kd}</th>` +
+      S.map(([k]) => `<td><input type="date" data-id="${s.id}" data-k="${k}" value="${s[k] || ""}" class="${s[k] ? "has" : ""}"></td>`).join("") +
+      `<td data-now="${s.id}">${stageNow(s)}</td><td><button class="plain" data-del="${s.id}">삭제</button></td></tr>`;
+  }).join("");
   g.innerHTML = `<table><thead>${head}</thead><tbody>${rows}</tbody></table>`;
   pg.innerHTML = `<span class="msg" style="margin:0">전체 ${list.length}건 중 ${PAGE * PAGE_SIZE + 1}~${PAGE * PAGE_SIZE + show.length}번째</span>` +
     (pages > 1 ? `<button class="plain" id="pp" ${PAGE === 0 ? "disabled" : ""}>이전</button><span>${PAGE + 1} / ${pages}</span><button class="plain" id="pn" ${PAGE >= pages - 1 ? "disabled" : ""}>다음</button>` : "");
@@ -368,7 +379,7 @@ function renderGrid(){
   g.onchange = async e => {
     const i = e.target;
     if (!i.dataset.k) return;
-    const { error } = await sb.from("shipments").update({ [i.dataset.k]: i.value || null }).eq("id", i.dataset.id);
+    const { error } = await sb.from(MODES[AM].tbl).update({ [i.dataset.k]: i.value || null }).eq("id", i.dataset.id);
     if (!error) {
       const s = ALL.find(x => String(x.id) === i.dataset.id);
       if (s) {
@@ -384,7 +395,7 @@ function renderGrid(){
     const id = e.target.dataset.del;
     if (!id) return;
     if (!confirm("이 화물을 삭제할까요? 되돌릴 수 없습니다.")) return;
-    const { error } = await sb.from("shipments").delete().eq("id", id);
+    const { error } = await sb.from(MODES[AM].tbl).delete().eq("id", id);
     error ? flash("삭제하지 못했습니다") : loadGrid();
   };
 }
@@ -401,6 +412,7 @@ function loginView(){
     if (error) $("#le").textContent = "이메일이나 비밀번호가 맞지 않습니다."; else showAdmin();
   };
 }
+
 applyLang();
 route();
 </script>
