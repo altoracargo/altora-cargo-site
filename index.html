@@ -12,6 +12,9 @@
 body{margin:0;font-family:"Noto Sans KR","Noto Sans",system-ui,sans-serif;background:var(--bg);color:var(--ink);line-height:1.6}
 header{background:#fff;border-bottom:3px solid var(--gold);display:flex;align-items:center;gap:14px;padding:8px 20px}
 .brand{display:flex;align-items:center;gap:14px;text-decoration:none;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.fb{display:flex;flex:none;border-radius:50%;transition:transform .15s}
+.fb:hover{transform:scale(1.08)}
+.fb svg{display:block}
 header img{height:132px;width:132px;flex:none}
 header b{color:var(--navy);font-size:20px;letter-spacing:.02em}
 .hero{background:var(--navy);color:#fff;padding:44px 20px 52px}
@@ -65,6 +68,10 @@ ol.steps .d{display:block;font-weight:400;font-size:14px}
 .badge{display:inline-block;background:var(--gold-l);color:var(--navy);border-radius:6px;padding:2px 10px;font-size:14px;margin-left:10px;vertical-align:middle}
 footer{text-align:center;color:var(--mute);font-size:13px;padding-bottom:30px}
 footer a{color:var(--mute)}
+.contact{margin:0 auto 16px;padding:0 16px;font-size:14px;line-height:1.9;color:var(--ink)}
+.contact b{color:var(--navy);margin-right:4px}
+.contact a{color:var(--ink);text-decoration:none}
+.adm .contact{display:none}
 .login{max-width:380px;margin:0 auto;background:#fff;border:1px solid var(--line);border-radius:10px;padding:24px;display:grid;gap:12px}
 .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}
 .bar input{width:auto;flex:1 1 150px}
@@ -93,9 +100,11 @@ tr.grp>th{background:#e6ecf7}
 </head>
 <body>
 <header><a href="#" id="home" class="brand" aria-label="ALTORA CARGO 처음으로" title="처음으로"><img src="logo.png" alt="ALTORA CARGO 로고"><b>ALTORA CARGO</b></a>
-  <div class="lang" role="group" aria-label="Language"><button data-l="kr" onclick="setLang('kr')">KR</button><button data-l="mn" onclick="setLang('mn')">MN</button></div></header>
+  <div class="lang" role="group" aria-label="Language"><button data-l="kr" onclick="setLang('kr')">KR</button><button data-l="mn" onclick="setLang('mn')">MN</button></div>
+  <a class="fb" href="https://www.facebook.com/altoracargo" target="_blank" rel="noopener noreferrer" aria-label="ALTORA CARGO Facebook" title="ALTORA CARGO Facebook">
+    <svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><path fill="#1877F2" d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg></a></header>
 <div id="app"></div>
-<footer><a href="#admin">관리자</a></footer>
+<footer><div class="contact" id="contact"></div><a id="adm" href="#admin">관리자</a></footer>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -138,6 +147,7 @@ const kindOf = c => /^ORA-/i.test(c || "") ? "general" : /^ALT-/i.test(c || "") 
 const TXT = {
   kr: { doc: "ALTORA CARGO 화물 조회", title: "내 화물이 지금 어디에 있는지 확인하세요", sub: "화물 번호를 입력하세요.",
     subAir: "화물 번호 뒤 4자리만 입력하세요.",
+    addr: "주소", krTel: "한국 연락처", mnTel: "몽골 연락처",
     subSea: "일반 또는 익스프레스를 선택하고, 화물 번호 뒤 4자리만 입력하세요.",
     ph: "화물 번호 입력", phSea: "ORA-0000 또는 ALT-0000", go: "조회하기", wait: "조회 중입니다...",
     fail: "조회에 실패했습니다. 잠시 후 다시 시도하세요.", none: "일치하는 화물이 없습니다. 화물 번호를 다시 확인하세요.",
@@ -146,6 +156,7 @@ const TXT = {
     air: "항공 화물", sea: "해상 화물", general: "일반", express: "익스프레스" },
   mn: { doc: "ALTORA CARGO ачаа шалгах", title: "Таны ачаа одоо хаана байгааг шалгана уу", sub: "Ачааны дугаараа оруулна уу.",
     subAir: "Ачааны дугаарын сүүлийн 4 оронг оруулна уу.",
+    addr: "Хаяг", krTel: "Солонгос дугаар", mnTel: "Монгол дугаар",
     subSea: "Энгийн эсвэл Экспресс-ээ сонгоод ачааны дугаарын сүүлийн 4 оронг оруулна уу.",
     ph: "Ачааны дугаар", phSea: "ORA-0000 эсвэл ALT-0000", go: "Шалгах", wait: "Шалгаж байна...",
     fail: "Шалгаж чадсангүй. Түр хүлээгээд дахин оролдоно уу.", none: "Тохирох ачаа олдсонгүй. Ачааны дугаараа дахин шалгана уу.",
@@ -168,8 +179,13 @@ function setLang(l){
 function applyLang(){
   document.documentElement.lang = LANG === "mn" ? "mn" : "ko";
   document.title = T("doc");
-  const fa = document.querySelector("footer a");
+  const fa = $("#adm");
   if (fa) fa.textContent = T("admin");
+  const ct = $("#contact");
+  if (ct) ct.innerHTML =
+    `<div><b>${T("addr")}:</b> 경기도 고양시 일산동구 장백로 19, 104호</div>` +
+    `<div><b>${T("krTel")}:</b> <a href="tel:+821066235055">010-6623-5055</a></div>` +
+    `<div><b>${T("mnTel")}:</b> <a href="tel:+97672010133">7201-0133</a></div>`;
   document.querySelectorAll(".lang button").forEach(b => b.classList.toggle("on", b.dataset.l === LANG));
 }
 function route(){
