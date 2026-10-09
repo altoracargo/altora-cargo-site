@@ -16,6 +16,9 @@ header{background:#fff;border-bottom:3px solid var(--gold);display:flex;align-it
 .quick a{display:inline-flex;align-items:center;gap:8px;padding:9px 16px;border-radius:999px;font-weight:700;font-size:14px;text-decoration:none;color:#fff}
 .quick .call{background:var(--navy)}
 .quick .ms{background:#0084FF}
+.quick .nav{background:var(--gold);color:#1b1500}
+.contact .maps{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:2px 0 6px}
+.contact .maps a{border:1px solid var(--line);background:#fff;border-radius:999px;padding:0 14px;line-height:2;font-size:13px;color:var(--navy);font-weight:500}
 .quick svg{width:18px;height:18px;fill:currentColor;flex:none}
 .adm .quick{display:none}
 .fb{display:flex;flex:none;border-radius:50%;transition:transform .15s}
@@ -156,6 +159,7 @@ const TXT = {
     subAir: "화물 번호 뒤 4자리만 입력하세요.",
     addr: "주소", krTel: "한국 연락처", mnTel: "몽골 연락처",
     callKr: "한국 전화", callMn: "몽골 전화", chat: "메신저 문의",
+    nav: "길찾기", mapN: "네이버지도", mapK: "카카오맵", mapG: "구글지도",
     subSea: "일반 또는 익스프레스를 선택하고, 화물 번호 뒤 4자리만 입력하세요.",
     ph: "화물 번호 입력", phSea: "ORA-0000 또는 ALT-0000", go: "조회하기", wait: "조회 중입니다...",
     fail: "조회에 실패했습니다. 잠시 후 다시 시도하세요.", none: "일치하는 화물이 없습니다. 화물 번호를 다시 확인하세요.",
@@ -166,6 +170,7 @@ const TXT = {
     subAir: "Ачааны дугаарын сүүлийн 4 оронг оруулна уу.",
     addr: "Хаяг", krTel: "Солонгос дугаар", mnTel: "Монгол дугаар",
     callKr: "Солонгос руу залгах", callMn: "Монгол руу залгах", chat: "Messenger-ээр асуух",
+    nav: "Газрын зураг", mapN: "Naver Map", mapK: "Kakao Map", mapG: "Google Maps",
     subSea: "Энгийн эсвэл Экспресс-ээ сонгоод ачааны дугаарын сүүлийн 4 оронг оруулна уу.",
     ph: "Ачааны дугаар", phSea: "ORA-0000 эсвэл ALT-0000", go: "Шалгах", wait: "Шалгаж байна...",
     fail: "Шалгаж чадсангүй. Түр хүлээгээд дахин оролдоно уу.", none: "Тохирох ачаа олдсонгүй. Ачааны дугаараа дахин шалгана уу.",
@@ -190,16 +195,25 @@ function applyLang(){
   document.title = T("doc");
   const fa = $("#adm");
   if (fa) fa.textContent = T("admin");
+  const ADDR = "경기도 고양시 일산동구 장백로 19, 104호", EA = encodeURIComponent(ADDR);
+  const MAPS = {
+    g: "https://www.google.com/maps/search/?api=1&query=" + EA,
+    n: "https://map.naver.com/p/search/" + EA,
+    k: "https://map.kakao.com/link/search/" + EA
+  };
+  const PIN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1112 6.5a2.5 2.5 0 010 5z"/></svg>';
   const qk = $("#quick");
   const PH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.62 10.79a15.05 15.05 0 006.59 6.59l2.2-2.2a1 1 0 011.02-.24c1.12.37 2.33.57 3.57.57a1 1 0 011 1V20a1 1 0 01-1 1A17 17 0 013 4a1 1 0 011-1h3.5a1 1 0 011 1c0 1.25.2 2.45.57 3.57a1 1 0 01-.25 1.02l-2.2 2.2z"/></svg>';
   const MS = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C6.48 2 2 6.145 2 11.26c0 2.91 1.45 5.5 3.72 7.2V22l3.4-1.87c.9.25 1.87.39 2.88.39 5.52 0 10-4.145 10-9.26S17.52 2 12 2zm1.1 12.3l-2.55-2.72-4.97 2.72 5.47-5.8 2.6 2.72 4.9-2.72-5.45 5.8z"/></svg>';
   if (qk) qk.innerHTML =
     `<a class="call" href="tel:+821066235055">${PH}${T("callKr")}</a>` +
     `<a class="call" href="tel:+97672010133">${PH}${T("callMn")}</a>` +
-    `<a class="ms" href="https://m.me/altoracargo" target="_blank" rel="noopener noreferrer">${MS}${T("chat")}</a>`;
+    `<a class="ms" href="https://m.me/altoracargo" target="_blank" rel="noopener noreferrer">${MS}${T("chat")}</a>` +
+    `<a class="nav" href="${MAPS.g}" target="_blank" rel="noopener noreferrer">${PIN}${T("nav")}</a>`;
   const ct = $("#contact");
   if (ct) ct.innerHTML =
-    `<div><b>${T("addr")}:</b> 경기도 고양시 일산동구 장백로 19, 104호</div>` +
+    `<div><b>${T("addr")}:</b> ${ADDR}</div>` +
+    `<div class="maps"><a href="${MAPS.n}" target="_blank" rel="noopener noreferrer">${T("mapN")}</a><a href="${MAPS.k}" target="_blank" rel="noopener noreferrer">${T("mapK")}</a><a href="${MAPS.g}" target="_blank" rel="noopener noreferrer">${T("mapG")}</a></div>` +
     `<div><b>${T("krTel")}:</b> <a href="tel:+821066235055">010-6623-5055</a></div>` +
     `<div><b>${T("mnTel")}:</b> <a href="tel:+97672010133">7201-0133</a></div>`;
   document.querySelectorAll(".lang button").forEach(b => b.classList.toggle("on", b.dataset.l === LANG));
