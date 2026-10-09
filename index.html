@@ -9,7 +9,7 @@
 <style>
 :root{--navy:#1A3C6E;--navy-d:#12294D;--gold:#B8902A;--gold-l:#E9D9A6;--ink:#1d2433;--mute:#6b7487;--line:#dfe4ee;--bg:#f3f5f9}
 *{box-sizing:border-box}
-body{margin:0;font-family:"Noto Sans KR",system-ui,sans-serif;background:var(--bg);color:var(--ink);line-height:1.6}
+body{margin:0;font-family:"Noto Sans KR","Noto Sans",system-ui,sans-serif;background:var(--bg);color:var(--ink);line-height:1.6}
 header{background:#fff;border-bottom:3px solid var(--gold);display:flex;align-items:center;gap:14px;padding:8px 20px}
 header img{height:132px;width:132px;flex:none}
 header b{color:var(--navy);font-size:20px;letter-spacing:.02em}
@@ -42,6 +42,10 @@ ol.steps li.done::after{background:var(--gold);border-color:var(--gold)}
 ol.steps li.cur{color:var(--navy);font-weight:700}
 ol.steps li.cur::after{background:var(--navy);border-color:var(--navy);box-shadow:0 0 0 5px rgba(26,60,110,.18)}
 ol.steps .d{display:block;font-weight:400;font-size:14px}
+.lang{margin-left:auto;display:flex;border:2px solid var(--navy);border-radius:8px;overflow:hidden}
+.lang button{background:#fff;color:var(--navy);border-radius:0;padding:8px 14px;font-weight:700}
+.lang button.on{background:var(--navy);color:#fff}
+.adm .lang{display:none}
 footer{text-align:center;color:var(--mute);font-size:13px;padding-bottom:30px}
 footer a{color:var(--mute)}
 .login{max-width:380px;margin:0 auto;background:#fff;border:1px solid var(--line);border-radius:10px;padding:24px;display:grid;gap:12px}
@@ -59,11 +63,12 @@ td input{padding:8px;width:100%}
 td input.has{border-color:var(--gold);background:#fffaf0}
 .saved{color:var(--gold);font-weight:700}
 .panel{background:#fff;border:1px solid var(--line);border-left:4px solid var(--gold);border-radius:10px;padding:16px 18px;margin-bottom:16px}.panel p{margin:4px 0 10px}
-@media(max-width:560px){form.search{flex-direction:column}.hero h1{font-size:23px}header img{height:92px;width:92px}header b{font-size:17px}}
+@media(max-width:560px){form.search{flex-direction:column}.hero h1{font-size:23px}header img{height:92px;width:92px}header b{display:none}}
 </style>
 </head>
 <body>
-<header><img src="logo.png" alt="ALTORA CARGO 로고"><b>ALTORA CARGO</b></header>
+<header><img src="logo.png" alt="ALTORA CARGO 로고"><b>ALTORA CARGO</b>
+  <div class="lang" role="group" aria-label="Language"><button data-l="kr" onclick="setLang('kr')">KR</button><button data-l="mn" onclick="setLang('mn')">MN</button></div></header>
 <div id="app"></div>
 <footer><a href="#admin">관리자</a></footer>
 
@@ -88,44 +93,104 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const app = $("#app");
 
-function route(){ location.hash === "#admin" ? showAdmin() : showTrack(); }
+/* ---------- 언어 (고객 화면: 한국어 / 몽골어) ---------- */
+const TXT = {
+  kr: {
+    doc: "ALTORA CARGO 화물 조회",
+    title: "내 화물이 지금 어디에 있는지 확인하세요",
+    sub: "화물 번호를 입력하세요.",
+    ph: "화물 번호 입력",
+    go: "조회하기",
+    wait: "조회 중입니다...",
+    fail: "조회에 실패했습니다. 잠시 후 다시 시도하세요.",
+    none: "일치하는 화물이 없습니다. 화물 번호를 다시 확인하세요.",
+    cargo: "화물 번호",
+    cur: "현재 위치",
+    notyet: "아직 접수 전입니다.",
+    plan: "예정",
+    admin: "관리자",
+    stages: ["ALTORA 입고", "공항반입", "인천 출발", "올란바타르 도착", "통관완료", "ALTORA 지사 도착"]
+  },
+  mn: {
+    doc: "ALTORA CARGO ачаа шалгах",
+    title: "Таны ачаа одоо хаана байгааг шалгана уу",
+    sub: "Ачааны дугаараа оруулна уу.",
+    ph: "Ачааны дугаар",
+    go: "Шалгах",
+    wait: "Шалгаж байна...",
+    fail: "Шалгаж чадсангүй. Түр хүлээгээд дахин оролдоно уу.",
+    none: "Тохирох ачаа олдсонгүй. Ачааны дугаараа дахин шалгана уу.",
+    cargo: "Ачааны дугаар",
+    cur: "Одоогийн байршил",
+    notyet: "Ачаа хараахан бүртгэгдээгүй байна.",
+    plan: "Хүлээгдэж байна",
+    admin: "Админ",
+    stages: ["ALTORA агуулахад хүлээн авсан", "Нисэх онгоцны буудалд оруулсан", "Инчоноос ниссэн", "Улаанбаатарт ирсэн", "Гаалийн бүрдүүлэлт хийгдсэн", "ALTORA салбарт ирсэн"]
+  }
+};
+let LANG = "kr";
+try { LANG = localStorage.getItem("lang") === "mn" ? "mn" : "kr"; } catch (e) {}
+const T = k => TXT[LANG][k];
+let lastQ = "";
+
+function setLang(l){
+  LANG = l;
+  try { localStorage.setItem("lang", l); } catch (e) {}
+  applyLang();
+  route();
+}
+function applyLang(){
+  document.documentElement.lang = LANG === "mn" ? "mn" : "ko";
+  document.title = T("doc");
+  const fa = document.querySelector("footer a");
+  if (fa) fa.textContent = T("admin");
+  document.querySelectorAll(".lang button").forEach(b => b.classList.toggle("on", b.dataset.l === LANG));
+}
+
+function route(){
+  const adm = location.hash === "#admin";
+  document.body.classList.toggle("adm", adm);
+  adm ? showAdmin() : showTrack();
+}
 window.addEventListener("hashchange", route);
-route();
 
 /* ---------- 고객 조회 화면 ---------- */
 function showTrack(){
   app.innerHTML = `
     <section class="hero"><div>
-      <h1>내 화물이 지금 어디에 있는지 확인하세요</h1>
-      <p>화물 번호를 입력하세요.</p>
+      <h1>${T("title")}</h1>
+      <p>${T("sub")}</p>
       <form class="search" id="f">
-        <input type="text" id="q" placeholder="화물 번호 입력" required>
-        <button>조회하기</button>
+        <input type="text" id="q" placeholder="${T("ph")}" required>
+        <button>${T("go")}</button>
       </form>
     </div></section>
     <main><div id="out"></div></main>`;
-  $("#f").onsubmit = async e => {
-    e.preventDefault();
-    const q = $("#q").value.trim();
-    const out = $("#out");
-    out.innerHTML = '<p class="msg">조회 중입니다...</p>';
-    const { data, error } = await sb.rpc("track", { q });
-    if (error) { out.innerHTML = `<p class="msg err">조회에 실패했습니다. 잠시 후 다시 시도하세요.</p>`; return; }
-    if (!data.length) { out.innerHTML = `<p class="msg">일치하는 화물이 없습니다. 화물 번호를 다시 확인하세요.</p>`; return; }
-    out.innerHTML = data.map(card).join("");
-  };
+  $("#f").onsubmit = e => { e.preventDefault(); search($("#q").value.trim()); };
+  if (lastQ) { $("#q").value = lastQ; search(lastQ); }
+}
+
+async function search(q){
+  lastQ = q;
+  const out = $("#out");
+  out.innerHTML = `<p class="msg">${T("wait")}</p>`;
+  const { data, error } = await sb.rpc("track", { q });
+  if (error) { out.innerHTML = `<p class="msg err">${T("fail")}</p>`; return; }
+  if (!data.length) { out.innerHTML = `<p class="msg">${T("none")}</p>`; return; }
+  out.innerHTML = data.map(card).join("");
 }
 
 function card(s){
   let cur = -1;
   STAGES.forEach(([k], i) => { if (s[k]) cur = i; });
-  const now = cur < 0 ? "아직 접수 전입니다." : `현재 위치: ${STAGES[cur][1]} (${s[STAGES[cur][0]]})`;
-  const steps = STAGES.map(([k, label], i) => {
+  const L = TXT[LANG].stages;
+  const now = cur < 0 ? T("notyet") : `${T("cur")}: ${L[cur]} (${s[STAGES[cur][0]]})`;
+  const steps = STAGES.map(([k], i) => {
     const cls = i === cur ? "cur" : s[k] ? "done" : "";
-    return `<li class="${cls}">${label}<span class="d">${s[k] ? esc(s[k]) : "예정"}</span></li>`;
+    return `<li class="${cls}">${L[i]}<span class="d">${s[k] ? esc(s[k]) : T("plan")}</span></li>`;
   }).join("");
   return `<div class="ship">
-    <h2 style="margin-bottom:14px">화물 번호 ${esc(s.cargo_no)}</h2>
+    <h2 style="margin-bottom:14px">${T("cargo")} ${esc(s.cargo_no)}</h2>
     <div class="now">${esc(now)}</div>
     <ol class="steps">${steps}</ol></div>`;
 }
@@ -306,6 +371,8 @@ function loginView(){
     if (error) $("#le").textContent = "이메일이나 비밀번호가 맞지 않습니다."; else showAdmin();
   };
 }
+applyLang();
+route();
 </script>
 </body>
 </html>
