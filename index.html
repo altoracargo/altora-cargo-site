@@ -153,6 +153,10 @@ const MODES = {
 const SEA_RE = /^(ORA|ALT)-\d+$/i;
 const kindOf = c => /^ORA-/i.test(c || "") ? "general" : /^ALT-/i.test(c || "") ? "express" : "";
 
+/* 사무실 좌표: 네이버지도에서 장소를 길게 누르거나 우클릭하면 위도·경도를 알 수 있습니다.
+   두 값을 채우면 「길찾기」가 검색이 아니라 '도착지가 지정된 자동차 길안내'로 바로 연결됩니다. */
+const DEST = { lat: null, lng: null };   // 예: { lat: 37.6xxxx, lng: 126.7xxxx }
+
 /* ---------- 언어 (고객 화면: 한국어 / 몽골어) ---------- */
 const TXT = {
   kr: { doc: "ALTORA CARGO 화물 조회", title: "내 화물이 지금 어디에 있는지 확인하세요", sub: "화물 번호를 입력하세요.",
@@ -209,7 +213,22 @@ function applyLang(){
     `<a class="call" href="tel:+821066235055">${PH}${T("callKr")}</a>` +
     `<a class="call" href="tel:+97672010133">${PH}${T("callMn")}</a>` +
     `<a class="ms" href="https://m.me/altoracargo" target="_blank" rel="noopener noreferrer">${MS}${T("chat")}</a>` +
-    `<a class="nav" href="${MAPS.g}" target="_blank" rel="noopener noreferrer">${PIN}${T("nav")}</a>`;
+    `<a class="nav" id="navbtn" href="${MAPS.n}" target="_blank" rel="noopener noreferrer">${PIN}${T("nav")}</a>`;
+  const nb = $("#navbtn");
+  if (nb) nb.onclick = e => {
+    /* 모바일: 네이버지도 앱을 바로 열고, 앱이 없으면 웹 네이버지도로 이동 */
+    if (!/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) return;   // PC는 링크대로 새 탭
+    e.preventDefault();
+    const hasLL = DEST.lat != null && DEST.lng != null, app = "altoracargo";
+    const scheme = hasLL
+      ? `nmap://route/car?dlat=${DEST.lat}&dlng=${DEST.lng}&dname=${encodeURIComponent("ALTORA CARGO")}&appname=${app}`
+      : `nmap://search?query=${EA}&appname=${app}`;
+    const web = hasLL
+      ? `https://map.naver.com/p/directions/-/${DEST.lng},${DEST.lat},${encodeURIComponent("ALTORA CARGO")}/-/car`
+      : MAPS.n;
+    location.href = scheme;
+    setTimeout(() => { if (!document.hidden) location.href = web; }, 1500);
+  };
   const ct = $("#contact");
   if (ct) ct.innerHTML =
     `<div><b>${T("addr")}:</b> ${ADDR}</div>` +
