@@ -11,6 +11,7 @@
 *{box-sizing:border-box}
 body{margin:0;font-family:"Noto Sans KR","Noto Sans",system-ui,sans-serif;background:var(--bg);color:var(--ink);line-height:1.6}
 header{background:#fff;border-bottom:3px solid var(--gold);display:flex;align-items:center;gap:14px;padding:8px 20px}
+.brand{display:flex;align-items:center;gap:14px;text-decoration:none;cursor:pointer;-webkit-tap-highlight-color:transparent}
 header img{height:132px;width:132px;flex:none}
 header b{color:var(--navy);font-size:20px;letter-spacing:.02em}
 .hero{background:var(--navy);color:#fff;padding:44px 20px 52px}
@@ -91,7 +92,7 @@ tr.grp>th{background:#e6ecf7}
 </style>
 </head>
 <body>
-<header><img src="logo.png" alt="ALTORA CARGO 로고"><b>ALTORA CARGO</b>
+<header><a href="#" id="home" class="brand" aria-label="ALTORA CARGO 처음으로" title="처음으로"><img src="logo.png" alt="ALTORA CARGO 로고"><b>ALTORA CARGO</b></a>
   <div class="lang" role="group" aria-label="Language"><button data-l="kr" onclick="setLang('kr')">KR</button><button data-l="mn" onclick="setLang('mn')">MN</button></div></header>
 <div id="app"></div>
 <footer><a href="#admin">관리자</a></footer>
@@ -177,6 +178,15 @@ function route(){
   adm ? showAdmin() : showTrack();
 }
 window.addEventListener("hashchange", route);
+
+/* 로고를 누르면 처음 상태로 초기화 (조회 화면, 항공 탭, 입력·결과 비움) */
+$("#home").onclick = e => {
+  e.preventDefault();
+  lastQ = ""; CM = "air"; SEA_K = "ORA"; AM = "air"; PAGE = 0; OPEN = new Set();
+  window.scrollTo(0, 0);
+  if (location.hash === "#admin") location.hash = "";   // hashchange 가 조회 화면을 다시 그림
+  else showTrack();
+};
 
 /* ---------- 고객 조회 화면 ---------- */
 /* 항공 화물번호는 G-1-0000 형식: 앞의 G-1-은 자동, 고객은 뒤 4자리만 입력 */
