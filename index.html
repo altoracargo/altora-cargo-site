@@ -51,15 +51,19 @@ footer a{color:var(--mute)}
 .login{max-width:380px;margin:0 auto;background:#fff;border:1px solid var(--line);border-radius:10px;padding:24px;display:grid;gap:12px}
 .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}
 .bar input{width:auto;flex:1 1 150px}
-.wrap{overflow-x:auto;background:#fff;border:1px solid var(--line);border-radius:10px}
-table{border-collapse:collapse;width:100%;min-width:480px}
-th,td{padding:10px 12px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);text-align:left;vertical-align:top}
+.wrap{overflow:auto;max-height:70vh;background:#fff;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:separate;border-spacing:0;width:100%}
+th,td{padding:8px 8px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);text-align:left;vertical-align:top}
 th:last-child,td:last-child{border-right:0}
-thead th{background:var(--navy);color:#fff;font-weight:500;min-width:170px}
+thead th{background:var(--navy);color:#fff;font-weight:500;position:sticky;top:0;z-index:2}
 thead th small{display:block;color:#c9d4ea;font-weight:400}
 thead th:first-child,tbody th{min-width:140px;position:sticky;left:0;background:#eef1f7;color:var(--navy)}
-thead th:first-child{background:var(--navy);color:#fff}
-td input{padding:8px;width:100%}
+thead th:first-child{background:var(--navy);color:#fff;left:0;z-index:3}
+button:disabled{opacity:.4;cursor:default}
+td input{padding:6px;width:100%;font-size:13px}
+td{white-space:nowrap}
+thead th{min-width:130px}
+thead th:last-child{min-width:70px}
 td input.has{border-color:var(--gold);background:#fffaf0}
 .saved{color:var(--gold);font-weight:700}
 .panel{background:#fff;border:1px solid var(--line);border-left:4px solid var(--gold);border-radius:10px;padding:16px 18px;margin-bottom:16px}.panel p{margin:4px 0 10px}
@@ -214,7 +218,7 @@ async function fetchAll(cols){
 async function showAdmin(){
   const { data:{ session } } = await sb.auth.getSession();
   if (!session) return loginView();
-  app.innerHTML = `<main>
+  app.innerHTML = `<main style="max-width:1400px">
     <div class="bar"><b style="color:var(--navy);font-size:20px;flex:1 1 auto">관리자</b>
       <button class="plain" id="out">로그아웃</button></div>
     <div class="panel">
@@ -230,16 +234,17 @@ async function showAdmin(){
       <input type="text" id="nc" placeholder="화물 번호 (한 건 추가)">
       <button class="plain" id="add">한 건 추가</button>
       <span id="st" class="saved"></span></div>
-    <div class="wrap" id="grid"><p class="msg" style="padding:16px">불러오는 중...</p></div></main>`;
+    <div class="wrap" id="grid"><p class="msg" style="padding:16px">불러오는 중...</p></div>
+    <div class="bar" id="pg" style="margin-top:12px"></div></main>`;
   $("#out").onclick = async () => { await sb.auth.signOut(); location.hash = ""; };
-  $("#sq").oninput = renderGrid;
+  $("#sq").oninput = () => { PAGE = 0; renderGrid(); };
   $("#add").onclick = async () => {
     const cargo_no = $("#nc").value.trim();
     if (!cargo_no) return flash("화물 번호를 입력하세요.");
     if (ALL.some(s => s.cargo_no === cargo_no)) return flash("이미 있는 화물 번호입니다.");
     const { error } = await sb.from("shipments").insert({ cargo_no });
     if (error) return flash("추가하지 못했습니다: " + error.message);
-    $("#nc").value = ""; loadGrid();
+    $("#nc").value = ""; PAGE = 0; loadGrid();
   };
   $("#tpl").onclick = () => {
     const head = ["화물번호", ...STAGES.map(s => s[1])];
@@ -321,6 +326,7 @@ async function importExcel(file, res){
   }
   res.className = "msg saved";
   res.textContent = `완료: 새 화물 ${toNew.length}건, 수정 ${toUpd.length}건`;
+  PAGE = 0;
   loadGrid();
 }
 
@@ -330,23 +336,47 @@ async function loadGrid(){
   renderGrid();
 }
 
+let PAGE = 0;
+const PAGE_SIZE = 50;
+function stageNow(s){
+  let c = -1;
+  STAGES.forEach(([k], i) => { if (s[k]) c = i; });
+  return c < 0 ? "-" : STAGES[c][1];
+}
+
 function renderGrid(){
-  const g = $("#grid"), q = norm($("#sq") && $("#sq").value);
+  const g = $("#grid"), pg = $("#pg"), q = norm($("#sq") && $("#sq").value);
+  pg.innerHTML = "";
   if (!ALL.length) { g.innerHTML = `<p class="msg" style="padding:16px">등록된 화물이 없습니다. 엑셀 파일을 올리거나 한 건을 추가하세요.</p>`; return; }
-  const list = ALL.filter(s => !q || norm(s.cargo_no).includes(q));
+  const list = ALL.filter(s => !q || norm(s.cargo_no).includes(q)).reverse();
   if (!list.length) { g.innerHTML = `<p class="msg" style="padding:16px">검색 결과가 없습니다.</p>`; return; }
-  const show = list.slice(0, 50);
-  const head = show.map(s => `<th>${esc(s.cargo_no || "(번호 없음)")}
-    <button class="plain" data-del="${s.id}" style="margin-top:6px">삭제</button></th>`).join("");
-  const rows = STAGES.map(([k, label]) => `<tr><th>${label}</th>` +
-    show.map(s => `<td><input type="date" data-id="${s.id}" data-k="${k}" value="${s[k] || ""}" class="${s[k] ? "has" : ""}"></td>`).join("") + `</tr>`).join("");
-  const note = list.length > show.length ? `<p class="msg" style="padding:10px 14px">전체 ${list.length}건 중 ${show.length}건만 표시합니다. 검색으로 좁혀 보세요.</p>` : "";
-  g.innerHTML = note + `<table><thead><tr><th>단계</th>${head}</tr></thead><tbody>${rows}</tbody></table>`;
+  const pages = Math.ceil(list.length / PAGE_SIZE);
+  if (PAGE > pages - 1) PAGE = pages - 1;
+  if (PAGE < 0) PAGE = 0;
+  const show = list.slice(PAGE * PAGE_SIZE, (PAGE + 1) * PAGE_SIZE);
+  const head = `<tr><th>화물번호</th>${STAGES.map(([, l]) => `<th>${l}</th>`).join("")}<th>현재 단계</th><th></th></tr>`;
+  const rows = show.map(s => `<tr><th>${esc(s.cargo_no || "(번호 없음)")}</th>` +
+    STAGES.map(([k]) => `<td><input type="date" data-id="${s.id}" data-k="${k}" value="${s[k] || ""}" class="${s[k] ? "has" : ""}"></td>`).join("") +
+    `<td data-now="${s.id}">${stageNow(s)}</td><td><button class="plain" data-del="${s.id}">삭제</button></td></tr>`).join("");
+  g.innerHTML = `<table><thead>${head}</thead><tbody>${rows}</tbody></table>`;
+  pg.innerHTML = `<span class="msg" style="margin:0">전체 ${list.length}건 중 ${PAGE * PAGE_SIZE + 1}~${PAGE * PAGE_SIZE + show.length}번째</span>` +
+    (pages > 1 ? `<button class="plain" id="pp" ${PAGE === 0 ? "disabled" : ""}>이전</button><span>${PAGE + 1} / ${pages}</span><button class="plain" id="pn" ${PAGE >= pages - 1 ? "disabled" : ""}>다음</button>` : "");
+  if (pages > 1) {
+    $("#pp").onclick = () => { PAGE--; renderGrid(); g.scrollTop = 0; };
+    $("#pn").onclick = () => { PAGE++; renderGrid(); g.scrollTop = 0; };
+  }
   g.onchange = async e => {
     const i = e.target;
     if (!i.dataset.k) return;
     const { error } = await sb.from("shipments").update({ [i.dataset.k]: i.value || null }).eq("id", i.dataset.id);
-    if (!error) { const s = ALL.find(x => String(x.id) === i.dataset.id); if (s) s[i.dataset.k] = i.value || null; }
+    if (!error) {
+      const s = ALL.find(x => String(x.id) === i.dataset.id);
+      if (s) {
+        s[i.dataset.k] = i.value || null;
+        const c = g.querySelector(`[data-now="${i.dataset.id}"]`);
+        if (c) c.textContent = stageNow(s);
+      }
+    }
     i.classList.toggle("has", !!i.value);
     flash(error ? "저장하지 못했습니다: " + error.message : "저장했습니다");
   };
