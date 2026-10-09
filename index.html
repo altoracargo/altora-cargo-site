@@ -24,6 +24,15 @@ input:focus,button:focus-visible{outline:3px solid var(--gold);outline-offset:1p
 button{background:var(--gold);color:#1b1500;border:0;border-radius:8px;padding:12px 22px;cursor:pointer;font-weight:700;white-space:nowrap}
 button.navy{background:var(--navy);color:#fff}
 button.plain{background:#e8ecf4;color:var(--ink);font-weight:500;padding:6px 10px;font-size:13px}
+.qf{display:flex;flex:1;align-items:stretch;background:#fff;border-radius:8px;overflow:hidden}
+.qf:focus-within{outline:3px solid var(--gold);outline-offset:1px}
+.hero .qf{max-width:none;margin:0}
+.hero .kinds{display:flex;gap:8px;margin:0 0 12px;max-width:none}
+.kinds button{background:transparent;color:#fff;border:1px solid #7f98c4;padding:8px 16px}
+.kinds button.on{background:#fff;color:var(--navy);border-color:#fff}
+.qf .pf{flex:none;white-space:nowrap;display:flex;align-items:center;padding-left:16px;color:var(--navy);font-weight:700;font-size:18px;letter-spacing:.06em;font-variant-numeric:tabular-nums}
+.qf input[type=text]{border:0;border-radius:0;padding-left:4px;min-width:0;font-size:18px;letter-spacing:.08em}
+.qf input:focus{outline:none}
 main{max-width:960px;margin:0 auto;padding:26px 16px 60px}
 .msg{color:var(--mute);margin:8px 0}.err{color:#b3261e}
 .ship{background:#fff;border:1px solid var(--line);border-radius:10px;padding:22px;margin-bottom:18px}
@@ -127,12 +136,16 @@ const kindOf = c => /^ORA-/i.test(c || "") ? "general" : /^ALT-/i.test(c || "") 
 /* ---------- 언어 (고객 화면: 한국어 / 몽골어) ---------- */
 const TXT = {
   kr: { doc: "ALTORA CARGO 화물 조회", title: "내 화물이 지금 어디에 있는지 확인하세요", sub: "화물 번호를 입력하세요.",
+    subAir: "화물 번호 뒤 4자리만 입력하세요.",
+    subSea: "일반 또는 익스프레스를 선택하고, 화물 번호 뒤 4자리만 입력하세요.",
     ph: "화물 번호 입력", phSea: "ORA-0000 또는 ALT-0000", go: "조회하기", wait: "조회 중입니다...",
     fail: "조회에 실패했습니다. 잠시 후 다시 시도하세요.", none: "일치하는 화물이 없습니다. 화물 번호를 다시 확인하세요.",
     hintSea: "ORA-, ALT-로 시작하는 번호는 '해상 화물' 탭에서 조회하세요.",
     cargo: "화물 번호", cur: "현재 위치", notyet: "아직 접수 전입니다.", plan: "예정", admin: "관리자",
     air: "항공 화물", sea: "해상 화물", general: "일반", express: "익스프레스" },
   mn: { doc: "ALTORA CARGO ачаа шалгах", title: "Таны ачаа одоо хаана байгааг шалгана уу", sub: "Ачааны дугаараа оруулна уу.",
+    subAir: "Ачааны дугаарын сүүлийн 4 оронг оруулна уу.",
+    subSea: "Энгийн эсвэл Экспресс-ээ сонгоод ачааны дугаарын сүүлийн 4 оронг оруулна уу.",
     ph: "Ачааны дугаар", phSea: "ORA-0000 эсвэл ALT-0000", go: "Шалгах", wait: "Шалгаж байна...",
     fail: "Шалгаж чадсангүй. Түр хүлээгээд дахин оролдоно уу.", none: "Тохирох ачаа олдсонгүй. Ачааны дугаараа дахин шалгана уу.",
     hintSea: "ORA-, ALT-ээр эхэлсэн дугаарыг «Далайн ачаа» цэсээр шалгана уу.",
@@ -166,21 +179,55 @@ function route(){
 window.addEventListener("hashchange", route);
 
 /* ---------- 고객 조회 화면 ---------- */
+/* 항공 화물번호는 G-1-0000 형식: 앞의 G-1-은 자동, 고객은 뒤 4자리만 입력 */
+const AIR_PFX = "G-1-";
+/* 해상 화물번호: 일반 ORA-0000 / 익스프레스 ALT-0000. 종류를 고르고 뒤 4자리만 입력 */
+let SEA_K = "ORA";
+function seaDigits(v){ return String(v ?? "").replace(/^\s*(ora|alt)\s*-?/i, "").replace(/\D/g, "").slice(0, 4); }
+function setKind(k){
+  SEA_K = k;
+  const pf = $("#pf"); if (pf) pf.textContent = k + "-";
+  document.querySelectorAll(".kinds button").forEach(b => b.classList.toggle("on", b.dataset.k === k));
+}
+function airDigits(v){
+  v = String(v ?? "");
+  if (/^\s*(ora|alt)/i.test(v)) return v;               // 해상 번호를 잘못 넣은 경우 안내가 나오도록 그대로 둠
+  return v.replace(/^\s*g\s*-?\s*1\s*-/i, "").replace(/\D/g, "").slice(0, 4);
+}
 function showTrack(){
   app.innerHTML = `
     <section class="hero"><div>
       <div class="tabs">${["air", "sea"].map(m => `<button type="button" data-m="${m}" class="${m === CM ? "on" : ""}">${T(m)}</button>`).join("")}</div>
       <h1>${T("title")}</h1>
-      <p>${T("sub")}</p>
+      <p>${T(CM === "air" ? "subAir" : "subSea")}</p>
+      ${CM === "sea" ? `<div class="kinds">${["ORA", "ALT"].map(k => `<button type="button" data-k="${k}" class="${k === SEA_K ? "on" : ""}">${T(k === "ORA" ? "general" : "express")} (${k}-)</button>`).join("")}</div>` : ""}
       <form class="search" id="f">
-        <input type="text" id="q" placeholder="${T(CM === "sea" ? "phSea" : "ph")}" required>
+        <div class="qf"><span class="pf" id="pf">${CM === "air" ? AIR_PFX : SEA_K + "-"}</span><input type="text" id="q" inputmode="numeric" autocomplete="off" placeholder="0000" required></div>
         <button>${T("go")}</button>
       </form>
     </div></section>
     <main><div id="out"></div></main>`;
   document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => { CM = b.dataset.m; lastQ = ""; showTrack(); });
-  $("#f").onsubmit = e => { e.preventDefault(); search($("#q").value.trim()); };
-  if (lastQ) { $("#q").value = lastQ; search(lastQ); }
+  if (CM === "air") $("#q").oninput = e => { e.target.value = airDigits(e.target.value); };
+  else {
+    $("#q").oninput = e => {
+      const m = e.target.value.match(/^\s*(ora|alt)/i);   // ORA-0123 / ALT-0123 을 통째로 붙여넣으면 종류도 자동 선택
+      if (m) setKind(m[1].toUpperCase());
+      e.target.value = seaDigits(e.target.value);
+    };
+    document.querySelectorAll(".kinds button").forEach(b => b.onclick = () => { setKind(b.dataset.k); $("#q").focus(); });
+  }
+  $("#f").onsubmit = e => {
+    e.preventDefault();
+    const v = $("#q").value.trim();
+    if (CM === "air") search(!SEA_RE.test(v) ? AIR_PFX + airDigits(v) : v);
+    else search(SEA_K + "-" + seaDigits(v));
+  };
+  if (lastQ) {
+    if (CM === "air") $("#q").value = airDigits(lastQ);
+    else { const m = lastQ.match(/^(ORA|ALT)/i); if (m) setKind(m[1].toUpperCase()); $("#q").value = seaDigits(lastQ); }
+    search(lastQ);
+  }
 }
 
 async function search(q){
