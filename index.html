@@ -72,6 +72,10 @@ td{white-space:nowrap}
 thead th{min-width:130px}
 thead th:last-child{min-width:70px}
 td input.has{border-color:var(--gold);background:#fffaf0}
+td input.mixed{border-color:#b3261e;background:#fff3f1}
+tr.grp>th{background:#e6ecf7}
+.chips{white-space:normal;line-height:2}
+.chips span{display:inline-block;background:#eef1f7;border:1px solid var(--line);border-radius:6px;padding:0 8px;margin:0 6px 4px 0;font-size:13px}
 .saved{color:var(--gold);font-weight:700}
 .panel{background:#fff;border:1px solid var(--line);border-left:4px solid var(--gold);border-radius:10px;padding:16px 18px;margin-bottom:16px}.panel p{margin:4px 0 10px}
 @media(max-width:560px){form.search{flex-direction:column}.hero h1{font-size:23px}header img{height:92px;width:92px}header b{display:none}}
@@ -229,7 +233,7 @@ async function showAdmin(){
     <div class="tabs atabs">${["air", "sea"].map(m => `<button type="button" data-m="${m}" class="${m === AM ? "on" : ""}">${MODES[m].file} 화물</button>`).join("")}</div>
     <div class="panel">
       <b>${MODES[AM].file} 화물: 엑셀로 한꺼번에 올리기</b>
-      <p class="msg">첫 줄에 <b>화물번호</b>와 ${S.length}개 단계 이름을 쓰고, 날짜는 2026-10-09 형식으로 입력하세요. 이미 있는 화물번호는 입력한 칸만 수정됩니다.${sea ? " 해상 화물번호는 <b>ORA-0000</b>(일반) 또는 <b>ALT-0000</b>(익스프레스) 형식입니다." : ""}</p>
+      <p class="msg"><b>엑셀 파일 이름이 그룹 이름</b>이 됩니다 (예: <b>10-08.xlsx</b> → <b>10-08</b> 그룹). 첫 줄에 <b>화물번호</b>를 쓰고 아래로 화물번호를 입력하세요. 날짜는 올린 뒤 아래 표에서 <b>그룹별로 한 번만</b> 지정하면 그룹 안 모든 화물에 적용됩니다. (엑셀에 단계 날짜 칸이 있어도 되며, 2026-10-09 형식) 이미 있는 화물번호는 새 그룹으로 옮겨집니다.${sea ? " 해상 화물번호는 <b>ORA-0000</b>(일반) 또는 <b>ALT-0000</b>(익스프레스) 형식입니다." : ""}</p>
       <div class="bar"><button class="plain" id="tpl">엑셀 양식 내려받기</button>
         <button id="up">엑셀 파일 올리기</button>
         <input type="file" id="file" accept=".xlsx,.xls,.csv" hidden></div>
@@ -238,6 +242,7 @@ async function showAdmin(){
     <div class="bar">
       <input type="text" id="sq" placeholder="화물 번호 검색">
       <input type="text" id="nc" placeholder="${sea ? "ORA-0000 또는 ALT-0000 (한 건 추가)" : "화물 번호 (한 건 추가)"}">
+      <input type="text" id="ng" placeholder="그룹 이름 (선택)">
       <button class="plain" id="add">한 건 추가</button>
       <span id="st" class="saved"></span></div>
     <div class="wrap" id="grid"><p class="msg" style="padding:16px">불러오는 중...</p></div>
@@ -251,13 +256,15 @@ async function showAdmin(){
     if (!cargo_no) return flash("화물 번호를 입력하세요.");
     if (sea && !SEA_RE.test(cargo_no)) return flash("ORA-0000 또는 ALT-0000 형식으로 입력하세요.");
     if (ALL.some(s => s.cargo_no === cargo_no)) return flash("이미 있는 화물 번호입니다.");
-    const { error } = await sb.from(MODES[AM].tbl).insert({ cargo_no });
+    const grp = $("#ng").value.trim(), row = { cargo_no };
+    if (grp) row.group_name = grp;
+    const { error } = await sb.from(MODES[AM].tbl).insert(row);
     if (error) return flash("추가하지 못했습니다: " + error.message);
     $("#nc").value = ""; PAGE = 0; loadGrid();
   };
   $("#tpl").onclick = () => {
-    const head = ["화물번호", ...S.map(s => s[1])];
-    const ex = sea ? [["ORA-0001", "2026-10-01", "2026-10-03"], ["ALT-0001", "2026-10-01"]] : [["TEST001", "2026-10-01", "2026-10-02"]];
+    const head = ["화물번호"];
+    const ex = sea ? [["ORA-0001"], ["ORA-0002"]] : [["TEST001"], ["TEST002"]];
     const ws = XLSX.utils.aoa_to_sheet([head, ...ex]);
     ws["!cols"] = head.map(() => ({ wch: 18 }));
     const wb = XLSX.utils.book_new();
@@ -311,6 +318,9 @@ async function importExcel(file, res){
     map.set(o.cargo_no, { ...(map.get(o.cargo_no) || {}), ...o });
   });
 
+  const grp = file.name.replace(/\.[^.]+$/, "").trim();
+  if (!grp) throw new Error("파일 이름이 비어 있습니다.");
+  for (const o of map.values()) o.group_name = grp;
   const cur = await fetchAll("id,cargo_no");
   const idOf = new Map(cur.filter(s => s.cargo_no).map(s => [s.cargo_no, s.id]));
   const toNew = [], toUpd = [];
@@ -321,7 +331,7 @@ async function importExcel(file, res){
     return;
   }
   if (!toNew.length && !toUpd.length) throw new Error("올릴 화물이 없습니다.");
-  if (!confirm(`[${MODES[AM].file} 화물] 새 화물 ${toNew.length}건을 추가하고 기존 ${toUpd.length}건을 수정합니다. 올릴까요?`)) { res.textContent = ""; return; }
+  if (!confirm(`[${MODES[AM].file} 화물] '${grp}' 그룹으로 새 화물 ${toNew.length}건을 추가하고 기존 ${toUpd.length}건을 수정합니다. 올릴까요?`)) { res.textContent = ""; return; }
 
   res.textContent = "올리는 중...";
   for (let i = 0; i < toNew.length; i += 500) {
@@ -334,7 +344,7 @@ async function importExcel(file, res){
     if (bad) throw bad.error;
   }
   res.className = "msg saved";
-  res.textContent = `완료: 새 화물 ${toNew.length}건, 수정 ${toUpd.length}건`;
+  res.textContent = `완료: '${grp}' 그룹 — 새 화물 ${toNew.length}건, 수정 ${toUpd.length}건. 아래 표에서 그룹 날짜를 지정하세요.`;
   PAGE = 0;
   loadGrid();
 }
@@ -343,6 +353,41 @@ async function loadGrid(){
   try { ALL = await fetchAll("*"); }
   catch (error) { $("#grid").innerHTML = `<p class="msg err" style="padding:16px">불러오지 못했습니다: ${esc(error.message)}</p>`; return; }
   renderGrid();
+}
+
+let OPEN = new Set();
+function buildItems(q){
+  const gm = new Map(), items = [];
+  ALL.forEach((s, i) => {
+    if (s.group_name) {
+      let g = gm.get(s.group_name);
+      if (!g) { g = { type: "g", name: s.group_name, rows: [], max: 0 }; gm.set(s.group_name, g); items.push(g); }
+      g.rows.push(s); g.max = i;
+    } else items.push({ type: "r", row: s, max: i });
+  });
+  return items.filter(it => !q || (it.type === "g"
+      ? norm(it.name).includes(q) || it.rows.some(r => norm(r.cargo_no).includes(q))
+      : norm(it.row.cargo_no).includes(q))).sort((a, b) => b.max - a.max);
+}
+/* 그룹 안 날짜가 모두 같으면 그 날짜, 서로 다르면 null, 비어 있으면 "" */
+function groupVal(rows, k){
+  const v = new Set(rows.map(r => r[k] || ""));
+  return v.size === 1 ? [...v][0] : null;
+}
+function groupNow(rows){
+  const o = {};
+  MODES[AM].stages.forEach(([k]) => { o[k] = rows.some(r => r[k]) ? 1 : ""; });
+  return stageNow(o);
+}
+function groupRow(it, S){
+  const n = esc(it.name), open = OPEN.has(it.name);
+  const cells = S.map(([k]) => {
+    const v = groupVal(it.rows, k);
+    return `<td><input type="date" data-g="${n}" data-k="${k}" value="${v || ""}" class="${v ? "has" : ""}${v === null ? " mixed" : ""}"${v === null ? ' title="그룹 안 날짜가 서로 다릅니다. 새로 지정하면 모두 같은 날짜로 바뀝니다."' : ""}></td>`;
+  }).join("");
+  const codes = open ? `<tr><td colspan="${S.length + 3}" class="chips">${it.rows.map(r => `<span>${esc(r.cargo_no)}</span>`).join("")}</td></tr>` : "";
+  return `<tr class="grp"><th>${n}<br><small style="font-weight:400">화물 ${it.rows.length}건</small><br><button class="plain" data-open="${n}">${open ? "코드 닫기" : "코드 보기"}</button></th>` +
+    cells + `<td data-gnow="${n}">${groupNow(it.rows)}</td><td><button class="plain" data-gdel="${n}">그룹 삭제</button></td></tr>` + codes;
 }
 
 function stageNow(s){
@@ -356,21 +401,23 @@ function renderGrid(){
   const g = $("#grid"), pg = $("#pg"), q = norm($("#sq") && $("#sq").value), S = MODES[AM].stages, sea = AM === "sea";
   pg.innerHTML = "";
   if (!ALL.length) { g.innerHTML = `<p class="msg" style="padding:16px">등록된 화물이 없습니다. 엑셀 파일을 올리거나 한 건을 추가하세요.</p>`; return; }
-  const list = ALL.filter(s => !q || norm(s.cargo_no).includes(q)).reverse();
+  const list = buildItems(q);
   if (!list.length) { g.innerHTML = `<p class="msg" style="padding:16px">검색 결과가 없습니다.</p>`; return; }
   const pages = Math.ceil(list.length / PAGE_SIZE);
   if (PAGE > pages - 1) PAGE = pages - 1;
   if (PAGE < 0) PAGE = 0;
   const show = list.slice(PAGE * PAGE_SIZE, (PAGE + 1) * PAGE_SIZE);
-  const head = `<tr><th>화물번호</th>${S.map(s => `<th>${s[1].split(" (")[0]}</th>`).join("")}<th>현재 단계</th><th></th></tr>`;
-  const rows = show.map(s => {
+  const head = `<tr><th>그룹 / 화물번호</th>${S.map(s => `<th>${s[1].split(" (")[0]}</th>`).join("")}<th>현재 단계</th><th></th></tr>`;
+  const rows = show.map(it => {
+    if (it.type === "g") return groupRow(it, S);
+    const s = it.row;
     const kd = sea && kindOf(s.cargo_no) ? `<br><small style="font-weight:400">${kindOf(s.cargo_no) === "general" ? "일반" : "익스프레스"}</small>` : "";
     return `<tr><th>${esc(s.cargo_no || "(번호 없음)")}${kd}</th>` +
       S.map(([k]) => `<td><input type="date" data-id="${s.id}" data-k="${k}" value="${s[k] || ""}" class="${s[k] ? "has" : ""}"></td>`).join("") +
       `<td data-now="${s.id}">${stageNow(s)}</td><td><button class="plain" data-del="${s.id}">삭제</button></td></tr>`;
   }).join("");
   g.innerHTML = `<table><thead>${head}</thead><tbody>${rows}</tbody></table>`;
-  pg.innerHTML = `<span class="msg" style="margin:0">전체 ${list.length}건 중 ${PAGE * PAGE_SIZE + 1}~${PAGE * PAGE_SIZE + show.length}번째</span>` +
+  pg.innerHTML = `<span class="msg" style="margin:0">그룹·개별 항목 ${list.length}개 중 ${PAGE * PAGE_SIZE + 1}~${PAGE * PAGE_SIZE + show.length}번째</span>` +
     (pages > 1 ? `<button class="plain" id="pp" ${PAGE === 0 ? "disabled" : ""}>이전</button><span>${PAGE + 1} / ${pages}</span><button class="plain" id="pn" ${PAGE >= pages - 1 ? "disabled" : ""}>다음</button>` : "");
   if (pages > 1) {
     $("#pp").onclick = () => { PAGE--; renderGrid(); g.scrollTop = 0; };
@@ -379,6 +426,16 @@ function renderGrid(){
   g.onchange = async e => {
     const i = e.target;
     if (!i.dataset.k) return;
+    if ("g" in i.dataset) {
+      const name = i.dataset.g, k = i.dataset.k, val = i.value || null;
+      const { error } = await sb.from(MODES[AM].tbl).update({ [k]: val }).eq("group_name", name);
+      if (error) return flash("저장하지 못했습니다: " + error.message);
+      let n = 0, rows = [];
+      ALL.forEach(s => { if (s.group_name === name) { s[k] = val; rows.push(s); n++; } });
+      i.classList.toggle("has", !!val); i.classList.remove("mixed"); i.removeAttribute("title");
+      g.querySelectorAll("[data-gnow]").forEach(c => { if (c.dataset.gnow === name) c.textContent = groupNow(rows); });
+      return flash(`'${name}' 그룹 ${n}건에 저장했습니다`);
+    }
     const { error } = await sb.from(MODES[AM].tbl).update({ [i.dataset.k]: i.value || null }).eq("id", i.dataset.id);
     if (!error) {
       const s = ALL.find(x => String(x.id) === i.dataset.id);
@@ -392,7 +449,19 @@ function renderGrid(){
     flash(error ? "저장하지 못했습니다: " + error.message : "저장했습니다");
   };
   g.onclick = async e => {
-    const id = e.target.dataset.del;
+    const d = e.target.dataset;
+    if (d.open !== undefined) {
+      OPEN.has(d.open) ? OPEN.delete(d.open) : OPEN.add(d.open);
+      const top = g.scrollTop; renderGrid(); g.scrollTop = top; return;
+    }
+    if (d.gdel !== undefined) {
+      const cnt = ALL.filter(s => s.group_name === d.gdel).length;
+      if (!confirm(`'${d.gdel}' 그룹과 안에 있는 화물 ${cnt}건을 모두 삭제할까요? 되돌릴 수 없습니다.`)) return;
+      const { error } = await sb.from(MODES[AM].tbl).delete().eq("group_name", d.gdel);
+      error ? flash("삭제하지 못했습니다: " + error.message) : loadGrid();
+      return;
+    }
+    const id = d.del;
     if (!id) return;
     if (!confirm("이 화물을 삭제할까요? 되돌릴 수 없습니다.")) return;
     const { error } = await sb.from(MODES[AM].tbl).delete().eq("id", id);
