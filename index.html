@@ -11,7 +11,7 @@
 *{box-sizing:border-box}
 body{margin:0;font-family:"Noto Sans KR",system-ui,sans-serif;background:var(--bg);color:var(--ink);line-height:1.6}
 header{background:#fff;border-bottom:3px solid var(--gold);display:flex;align-items:center;gap:14px;padding:8px 20px}
-header img{height:84px;width:84px}
+header img{height:132px;width:132px;flex:none}
 header b{color:var(--navy);font-size:20px;letter-spacing:.02em}
 .hero{background:var(--navy);color:#fff;padding:44px 20px 52px}
 .hero div{max-width:760px;margin:0 auto}
@@ -58,7 +58,8 @@ thead th:first-child{background:var(--navy);color:#fff}
 td input{padding:8px;width:100%}
 td input.has{border-color:var(--gold);background:#fffaf0}
 .saved{color:var(--gold);font-weight:700}
-@media(max-width:560px){form.search{flex-direction:column}.hero h1{font-size:23px}}
+.panel{background:#fff;border:1px solid var(--line);border-left:4px solid var(--gold);border-radius:10px;padding:16px 18px;margin-bottom:16px}.panel p{margin:4px 0 10px}
+@media(max-width:560px){form.search{flex-direction:column}.hero h1{font-size:23px}header img{height:92px;width:92px}header b{font-size:17px}}
 </style>
 </head>
 <body>
@@ -67,6 +68,7 @@ td input.has{border-color:var(--gold);background:#fffaf0}
 <footer><a href="#admin">관리자</a></footer>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 /* ===== 설정: 아래 URL만 본인 것으로 바꾸세요 ===== */
 const SUPABASE_URL = "https://piwahidjmhnunaswhrgb.supabase.co";
@@ -95,9 +97,9 @@ function showTrack(){
   app.innerHTML = `
     <section class="hero"><div>
       <h1>내 화물이 지금 어디에 있는지 확인하세요</h1>
-      <p>화물 번호 또는 항공편 이름을 입력하세요.</p>
+      <p>화물 번호를 입력하세요.</p>
       <form class="search" id="f">
-        <input type="text" id="q" placeholder="예: OM 301 또는 화물 번호" required>
+        <input type="text" id="q" placeholder="화물 번호 입력" required>
         <button>조회하기</button>
       </form>
     </div></section>
@@ -109,7 +111,7 @@ function showTrack(){
     out.innerHTML = '<p class="msg">조회 중입니다...</p>';
     const { data, error } = await sb.rpc("track", { q });
     if (error) { out.innerHTML = `<p class="msg err">조회에 실패했습니다. 잠시 후 다시 시도하세요.</p>`; return; }
-    if (!data.length) { out.innerHTML = `<p class="msg">일치하는 화물이 없습니다. 화물 번호나 항공편 이름을 다시 확인하세요.</p>`; return; }
+    if (!data.length) { out.innerHTML = `<p class="msg">일치하는 화물이 없습니다. 화물 번호를 다시 확인하세요.</p>`; return; }
     out.innerHTML = data.map(card).join("");
   };
 }
@@ -123,56 +125,170 @@ function card(s){
     return `<li class="${cls}">${label}<span class="d">${s[k] ? esc(s[k]) : "예정"}</span></li>`;
   }).join("");
   return `<div class="ship">
-    <h2>${esc(s.flight_name)}</h2>
-    <p class="sub">${s.cargo_no ? "화물 번호 " + esc(s.cargo_no) : ""}</p>
+    <h2 style="margin-bottom:14px">화물 번호 ${esc(s.cargo_no)}</h2>
     <div class="now">${esc(now)}</div>
     <ol class="steps">${steps}</ol></div>`;
 }
 
 /* ---------- 관리자 화면 ---------- */
+let ALL = [];
+const norm = s => String(s ?? "").replace(/\s+/g, "").toLowerCase();
+
+async function fetchAll(cols){
+  let all = [], from = 0;
+  for (;;) {
+    const { data, error } = await sb.from("shipments").select(cols).order("id").range(from, from + 999);
+    if (error) throw error;
+    all = all.concat(data);
+    if (data.length < 1000) break;
+    from += 1000;
+  }
+  return all;
+}
+
 async function showAdmin(){
   const { data:{ session } } = await sb.auth.getSession();
   if (!session) return loginView();
   app.innerHTML = `<main>
-    <div class="bar"><b style="color:var(--navy);font-size:20px;flex:1 1 100%">관리자: 항공편별 단계 날짜</b>
-      <input type="text" id="nf" placeholder="항공편 이름 (예: OM 301)">
-      <input type="text" id="nc" placeholder="화물 번호 (선택)">
-      <button id="add">항공편 추가</button>
-      <button class="plain" id="out">로그아웃</button>
+    <div class="bar"><b style="color:var(--navy);font-size:20px;flex:1 1 auto">관리자</b>
+      <button class="plain" id="out">로그아웃</button></div>
+    <div class="panel">
+      <b>엑셀로 한꺼번에 올리기</b>
+      <p class="msg">첫 줄에 <b>화물번호</b>와 6개 단계 이름을 쓰고, 날짜는 2026-10-09 형식으로 입력하세요. 이미 있는 화물번호는 입력한 칸만 수정됩니다.</p>
+      <div class="bar"><button class="plain" id="tpl">엑셀 양식 내려받기</button>
+        <button id="up">엑셀 파일 올리기</button>
+        <input type="file" id="file" accept=".xlsx,.xls,.csv" hidden></div>
+      <div id="res" class="msg"></div>
+    </div>
+    <div class="bar">
+      <input type="text" id="sq" placeholder="화물 번호 검색">
+      <input type="text" id="nc" placeholder="화물 번호 (한 건 추가)">
+      <button class="plain" id="add">한 건 추가</button>
       <span id="st" class="saved"></span></div>
     <div class="wrap" id="grid"><p class="msg" style="padding:16px">불러오는 중...</p></div></main>`;
   $("#out").onclick = async () => { await sb.auth.signOut(); location.hash = ""; };
+  $("#sq").oninput = renderGrid;
   $("#add").onclick = async () => {
-    const flight_name = $("#nf").value.trim();
-    if (!flight_name) return flash("항공편 이름을 입력하세요.");
-    const { error } = await sb.from("shipments").insert({ flight_name, cargo_no: $("#nc").value.trim() || null });
+    const cargo_no = $("#nc").value.trim();
+    if (!cargo_no) return flash("화물 번호를 입력하세요.");
+    if (ALL.some(s => s.cargo_no === cargo_no)) return flash("이미 있는 화물 번호입니다.");
+    const { error } = await sb.from("shipments").insert({ cargo_no });
     if (error) return flash("추가하지 못했습니다: " + error.message);
-    $("#nf").value = ""; $("#nc").value = ""; loadGrid();
+    $("#nc").value = ""; loadGrid();
+  };
+  $("#tpl").onclick = () => {
+    const head = ["화물번호", ...STAGES.map(s => s[1])];
+    const ws = XLSX.utils.aoa_to_sheet([head, ["TEST001", "2026-10-01", "2026-10-02", "", "", "", ""]]);
+    ws["!cols"] = head.map(() => ({ wch: 18 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "화물");
+    XLSX.writeFile(wb, "ALTORA_화물_업로드_양식.xlsx");
+  };
+  $("#up").onclick = () => $("#file").click();
+  $("#file").onchange = async e => {
+    const f = e.target.files[0]; e.target.value = "";
+    if (!f) return;
+    const res = $("#res"); res.className = "msg"; res.textContent = "파일을 읽는 중...";
+    try { await importExcel(f, res); }
+    catch (err) { res.className = "msg err"; res.textContent = "올리지 못했습니다: " + (err.message || err); }
   };
   loadGrid();
 }
 
 function flash(t){ const s = $("#st"); if (s){ s.textContent = t; clearTimeout(flash.t); flash.t = setTimeout(() => s.textContent = "", 2500); } }
 
+function fixDate(v){
+  v = String(v ?? "").trim();
+  if (!v) return "";
+  const m = v.match(/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
+  if (!m) return null;
+  const d = `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+  return isNaN(new Date(d)) ? null : d;
+}
+
+async function importExcel(file, res){
+  const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { raw: false, dateNF: "yyyy-mm-dd", defval: "" });
+  if (!rows.length) throw new Error("내용이 없는 파일입니다.");
+
+  const alias = { cargo_no: ["화물번호", "cargono", "코드", "운송장번호"] };
+  STAGES.forEach(([k, label]) => alias[k] = [norm(label)]);
+  const colOf = key => Object.keys(alias).find(f => alias[f].includes(norm(key)));
+  if (!Object.keys(rows[0]).some(k => colOf(k) === "cargo_no")) throw new Error("첫 줄에 '화물번호' 칸이 없습니다. 양식을 내려받아 사용하세요.");
+
+  const errs = [], map = new Map();
+  rows.forEach((r, i) => {
+    const line = i + 2, o = {};
+    for (const [key, val] of Object.entries(r)) {
+      const f = colOf(key);
+      if (!f) continue;
+      if (f === "cargo_no") { const t = String(val).trim(); if (t) o[f] = t; }
+      else { const d = fixDate(val); if (d === null) errs.push(`${line}행 '${key}' 날짜 형식을 확인하세요 (${val})`); else if (d) o[f] = d; }
+    }
+    if (!o.cargo_no) { if (Object.keys(o).length) errs.push(`${line}행: 화물번호가 없습니다`); return; }
+    map.set(o.cargo_no, { ...(map.get(o.cargo_no) || {}), ...o });
+  });
+
+  const cur = await fetchAll("id,cargo_no");
+  const idOf = new Map(cur.filter(s => s.cargo_no).map(s => [s.cargo_no, s.id]));
+  const toNew = [], toUpd = [];
+  for (const o of map.values()) {
+    if (idOf.has(o.cargo_no)) toUpd.push([idOf.get(o.cargo_no), o]);
+    else toNew.push(o);
+  }
+  if (errs.length) {
+    res.className = "msg err";
+    res.innerHTML = "<b>고칠 곳이 있어 아무것도 올리지 않았습니다.</b><br>" + errs.slice(0, 10).map(esc).join("<br>") + (errs.length > 10 ? `<br>외 ${errs.length - 10}건` : "");
+    return;
+  }
+  if (!toNew.length && !toUpd.length) throw new Error("올릴 화물이 없습니다.");
+  if (!confirm(`새 화물 ${toNew.length}건을 추가하고 기존 ${toUpd.length}건을 수정합니다. 올릴까요?`)) { res.textContent = ""; return; }
+
+  res.textContent = "올리는 중...";
+  for (let i = 0; i < toNew.length; i += 500) {
+    const { error } = await sb.from("shipments").insert(toNew.slice(i, i + 500));
+    if (error) throw error;
+  }
+  for (let i = 0; i < toUpd.length; i += 20) {
+    const r = await Promise.all(toUpd.slice(i, i + 20).map(([id, o]) => sb.from("shipments").update(o).eq("id", id)));
+    const bad = r.find(x => x.error);
+    if (bad) throw bad.error;
+  }
+  res.className = "msg saved";
+  res.textContent = `완료: 새 화물 ${toNew.length}건, 수정 ${toUpd.length}건`;
+  loadGrid();
+}
+
 async function loadGrid(){
-  const { data, error } = await sb.from("shipments").select("*").order("id");
-  const g = $("#grid");
-  if (error) { g.innerHTML = `<p class="msg err" style="padding:16px">불러오지 못했습니다: ${esc(error.message)}</p>`; return; }
-  if (!data.length) { g.innerHTML = `<p class="msg" style="padding:16px">등록된 항공편이 없습니다. 위에서 항공편을 추가하세요.</p>`; return; }
-  const head = data.map(s => `<th>${esc(s.flight_name)}<small>${esc(s.cargo_no || "")}</small>
+  try { ALL = await fetchAll("*"); }
+  catch (error) { $("#grid").innerHTML = `<p class="msg err" style="padding:16px">불러오지 못했습니다: ${esc(error.message)}</p>`; return; }
+  renderGrid();
+}
+
+function renderGrid(){
+  const g = $("#grid"), q = norm($("#sq") && $("#sq").value);
+  if (!ALL.length) { g.innerHTML = `<p class="msg" style="padding:16px">등록된 화물이 없습니다. 엑셀 파일을 올리거나 한 건을 추가하세요.</p>`; return; }
+  const list = ALL.filter(s => !q || norm(s.cargo_no).includes(q));
+  if (!list.length) { g.innerHTML = `<p class="msg" style="padding:16px">검색 결과가 없습니다.</p>`; return; }
+  const show = list.slice(0, 50);
+  const head = show.map(s => `<th>${esc(s.cargo_no || "(번호 없음)")}
     <button class="plain" data-del="${s.id}" style="margin-top:6px">삭제</button></th>`).join("");
   const rows = STAGES.map(([k, label]) => `<tr><th>${label}</th>` +
-    data.map(s => `<td><input type="date" data-id="${s.id}" data-k="${k}" value="${s[k] || ""}" class="${s[k] ? "has" : ""}"></td>`).join("") + `</tr>`).join("");
-  g.innerHTML = `<table><thead><tr><th>단계</th>${head}</tr></thead><tbody>${rows}</tbody></table>`;
+    show.map(s => `<td><input type="date" data-id="${s.id}" data-k="${k}" value="${s[k] || ""}" class="${s[k] ? "has" : ""}"></td>`).join("") + `</tr>`).join("");
+  const note = list.length > show.length ? `<p class="msg" style="padding:10px 14px">전체 ${list.length}건 중 ${show.length}건만 표시합니다. 검색으로 좁혀 보세요.</p>` : "";
+  g.innerHTML = note + `<table><thead><tr><th>단계</th>${head}</tr></thead><tbody>${rows}</tbody></table>`;
   g.onchange = async e => {
-    const i = e.target; if (!i.dataset.k) return;
+    const i = e.target;
+    if (!i.dataset.k) return;
     const { error } = await sb.from("shipments").update({ [i.dataset.k]: i.value || null }).eq("id", i.dataset.id);
+    if (!error) { const s = ALL.find(x => String(x.id) === i.dataset.id); if (s) s[i.dataset.k] = i.value || null; }
     i.classList.toggle("has", !!i.value);
     flash(error ? "저장하지 못했습니다: " + error.message : "저장했습니다");
   };
   g.onclick = async e => {
-    const id = e.target.dataset.del; if (!id) return;
-    if (!confirm("이 항공편을 삭제할까요? 되돌릴 수 없습니다.")) return;
+    const id = e.target.dataset.del;
+    if (!id) return;
+    if (!confirm("이 화물을 삭제할까요? 되돌릴 수 없습니다.")) return;
     const { error } = await sb.from("shipments").delete().eq("id", id);
     error ? flash("삭제하지 못했습니다") : loadGrid();
   };
