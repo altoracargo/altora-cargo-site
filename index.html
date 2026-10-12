@@ -140,7 +140,7 @@ const MODES = {
     ["d5_customs_done", "통관완료", "Гаалийн бүрдүүлэлт хийгдсэн"],
     ["d6_branch_arrive", "ALTORA 지사 도착", "ALTORA салбарт ирсэн"] ] },
   sea: { tbl: "sea_shipments", rpc: "track_sea", file: "해상", stages: [
-    ["d1_altora_in", "ALTORA 입고", "ALTORA агуулахад хүлээн авсан"],
+    ["d1_altora_in", "인천 출항일", "Инчоноос гарсан"],
     ["d2_cn_arrive", "중국 도착", "Хятадад ирсэн"],
     ["d3_cn_depart", "중국 출발", "Хятадаас гарсан"],
     ["d4_erl_arrive", "얼리안 도착", "Эрээнд ирсэн"],
@@ -178,9 +178,9 @@ const TXT = {
     subSea: "Энгийн эсвэл Экспресс-ээ сонгоод ачааны дугаарын сүүлийн 4 оронг оруулна уу.",
     ph: "Ачааны дугаар", phSea: "ORA-0000 эсвэл ALT-0000", go: "Шалгах", wait: "Шалгаж байна...",
     fail: "Шалгаж чадсангүй. Түр хүлээгээд дахин оролдоно уу.", none: "Тохирох ачаа олдсонгүй. Ачааны дугаараа дахин шалгана уу.",
-    hintSea: "ORA-, ALT-ээр эхэлсэн дугаарыг «Далайн ачаа» цэсээр шалгана уу.",
+    hintSea: "ORA-, ALT-ээр эхэлсэн дугаарыг «Газрын ачаа» цэсээр шалгана уу.",
     cargo: "Ачааны дугаар", cur: "Одоогийн байршил", notyet: "Ачаа хараахан бүртгэгдээгүй байна.", plan: "Хүлээгдэж байна", admin: "Админ",
-    air: "Агаарын ачаа", sea: "Далайн ачаа", general: "Энгийн", express: "Экспресс" }
+    air: "Агаарын ачаа", sea: "Газрын ачаа", general: "Энгийн", express: "Экспресс" }
 };
 let LANG = "kr";
 try { LANG = localStorage.getItem("lang") === "mn" ? "mn" : "kr"; } catch (e) {}
@@ -423,6 +423,7 @@ async function importExcel(file, res){
 
   const alias = { cargo_no: ["화물번호", "cargono", "코드", "운송장번호"] };
   S.forEach(([k, l]) => alias[k] = [norm(l), norm(l.split(" (")[0])]);
+  if (sea) alias.d1_altora_in.push(norm("ALTORA 입고"), norm("인천 출항"));   // 예전 양식의 칸 이름도 인식
   const colOf = key => Object.keys(alias).find(f => alias[f].includes(norm(key)));
   if (!Object.keys(rows[0]).some(k => colOf(k) === "cargo_no")) throw new Error("첫 줄에 '화물번호' 칸이 없습니다. 양식을 내려받아 사용하세요.");
 
