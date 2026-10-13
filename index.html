@@ -85,21 +85,31 @@ footer a{color:var(--mute)}
 .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}
 .bar input{width:auto;flex:1 1 150px}
 .wrap{overflow:auto;max-height:70vh;background:#fff;border:1px solid var(--line);border-radius:10px}
-table{border-collapse:separate;border-spacing:0;width:100%}
+table{border-collapse:separate;border-spacing:0;width:100%;table-layout:fixed;min-width:960px}
 th,td{padding:8px 8px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);text-align:left;vertical-align:top}
 th:last-child,td:last-child{border-right:0}
 thead th{background:var(--navy);color:#fff;font-weight:500;position:sticky;top:0;z-index:2}
 thead th small{display:block;color:#c9d4ea;font-weight:400}
-thead th:first-child,tbody th{min-width:140px;position:sticky;left:0;background:#eef1f7;color:var(--navy)}
+thead th:first-child,tbody th{width:190px;position:sticky;overflow-wrap:anywhere;left:0;background:#eef1f7;color:var(--navy)}
 thead th:first-child{background:var(--navy);color:#fff;left:0;z-index:3}
 button:disabled{opacity:.4;cursor:default}
-td input{padding:6px;width:100%;font-size:13px}
-td{white-space:nowrap}
-thead th{min-width:130px}
-thead th:last-child{min-width:70px}
+td input{padding:3px 4px;width:100%;font-size:12px;min-width:0}
+td input[type=date]{width:100%;font-size:11px;padding:3px 2px;letter-spacing:-.2px}
+input[type=date]::-webkit-calendar-picker-indicator{margin:0 0 0 1px;padding:0;width:12px}
+tbody td{padding:6px 3px}
+td{white-space:nowrap;overflow:hidden}
+thead th{min-width:0;padding:8px 6px;font-size:13px}
+thead th:last-child{width:70px}
+td:last-child button{padding:4px 6px;font-size:12px}
 td input.has{border-color:var(--gold);background:#fffaf0}
 td input.mixed{border-color:#b3261e;background:#fff3f1}
-tr.grp>th{background:#e6ecf7}
+tr.grp>th{background:#e6ecf7;vertical-align:middle}
+tr.grp>td{vertical-align:middle}
+tr.grp .gn{line-height:1.3;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-.3px}
+tr.grp .gm{display:flex;align-items:center;gap:8px;margin-top:4px}
+tr.grp .gm small{font-weight:400;color:var(--mute)}
+tr.grp .gm button{padding:2px 8px;font-size:12px}
+tbody td{vertical-align:middle}
 .chips{white-space:normal;line-height:2}
 .chips span{display:inline-block;background:#eef1f7;border:1px solid var(--line);border-radius:6px;padding:0 8px;margin:0 6px 4px 0;font-size:13px}
 .saved{color:var(--gold);font-weight:700}
@@ -508,9 +518,9 @@ function groupRow(it, S){
     const v = groupVal(it.rows, k);
     return `<td><input type="date" data-g="${n}" data-k="${k}" value="${v || ""}" class="${v ? "has" : ""}${v === null ? " mixed" : ""}"${v === null ? ' title="그룹 안 날짜가 서로 다릅니다. 새로 지정하면 모두 같은 날짜로 바뀝니다."' : ""}></td>`;
   }).join("");
-  const codes = open ? `<tr><td colspan="${S.length + 3}" class="chips">${it.rows.map(r => `<span>${esc(r.cargo_no)}</span>`).join("")}</td></tr>` : "";
-  return `<tr class="grp"><th>${n}<br><small style="font-weight:400">화물 ${it.rows.length}건</small><br><button class="plain" data-open="${n}">${open ? "코드 닫기" : "코드 보기"}</button></th>` +
-    cells + `<td data-gnow="${n}">${groupNow(it.rows)}</td><td><button class="plain" data-gdel="${n}">그룹 삭제</button></td></tr>` + codes;
+  const codes = open ? `<tr><td colspan="${S.length + 2}" class="chips">${it.rows.map(r => `<span>${esc(r.cargo_no)}</span>`).join("")}</td></tr>` : "";
+  return `<tr class="grp"><th><div class="gn">${n}</div><div class="gm"><small>화물 ${it.rows.length}건</small><button class="plain" data-open="${n}">${open ? "코드 닫기" : "코드 보기"}</button></div></th>` +
+    cells + `<td><button class="plain" data-gdel="${n}">그룹 삭제</button></td></tr>` + codes;
 }
 
 function stageNow(s){
@@ -530,14 +540,14 @@ function renderGrid(){
   if (PAGE > pages - 1) PAGE = pages - 1;
   if (PAGE < 0) PAGE = 0;
   const show = list.slice(PAGE * PAGE_SIZE, (PAGE + 1) * PAGE_SIZE);
-  const head = `<tr><th>그룹 / 화물번호</th>${S.map(s => `<th>${s[1].split(" (")[0]}</th>`).join("")}<th>현재 단계</th><th></th></tr>`;
+  const head = `<tr><th>그룹 / 화물번호</th>${S.map(s => `<th>${s[1].split(" (")[0]}</th>`).join("")}<th></th></tr>`;
   const rows = show.map(it => {
     if (it.type === "g") return groupRow(it, S);
     const s = it.row;
     const kd = sea && kindOf(s.cargo_no) ? `<br><small style="font-weight:400">${kindOf(s.cargo_no) === "general" ? "일반" : "익스프레스"}</small>` : "";
     return `<tr><th>${esc(s.cargo_no || "(번호 없음)")}${kd}</th>` +
       S.map(([k]) => `<td><input type="date" data-id="${s.id}" data-k="${k}" value="${s[k] || ""}" class="${s[k] ? "has" : ""}"></td>`).join("") +
-      `<td data-now="${s.id}">${stageNow(s)}</td><td><button class="plain" data-del="${s.id}">삭제</button></td></tr>`;
+      `<td><button class="plain" data-del="${s.id}">삭제</button></td></tr>`;
   }).join("");
   g.innerHTML = `<table><thead>${head}</thead><tbody>${rows}</tbody></table>`;
   pg.innerHTML = `<span class="msg" style="margin:0">그룹·개별 항목 ${list.length}개 중 ${PAGE * PAGE_SIZE + 1}~${PAGE * PAGE_SIZE + show.length}번째</span>` +
@@ -556,7 +566,6 @@ function renderGrid(){
       let n = 0, rows = [];
       ALL.forEach(s => { if (s.group_name === name) { s[k] = val; rows.push(s); n++; } });
       i.classList.toggle("has", !!val); i.classList.remove("mixed"); i.removeAttribute("title");
-      g.querySelectorAll("[data-gnow]").forEach(c => { if (c.dataset.gnow === name) c.textContent = groupNow(rows); });
       return flash(`'${name}' 그룹 ${n}건에 저장했습니다`);
     }
     const { error } = await sb.from(MODES[AM].tbl).update({ [i.dataset.k]: i.value || null }).eq("id", i.dataset.id);
@@ -564,8 +573,6 @@ function renderGrid(){
       const s = ALL.find(x => String(x.id) === i.dataset.id);
       if (s) {
         s[i.dataset.k] = i.value || null;
-        const c = g.querySelector(`[data-now="${i.dataset.id}"]`);
-        if (c) c.textContent = stageNow(s);
       }
     }
     i.classList.toggle("has", !!i.value);
