@@ -42,6 +42,7 @@ button.plain{background:#e8ecf4;color:var(--ink);font-weight:500;padding:6px 10p
 .hero .qf{max-width:none;margin:0}
 .hero .kinds{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px;max-width:none}
 .kinds button{background:transparent;color:#fff;border:1px solid #7f98c4;padding:8px 16px}
+#kd{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff}
 .kinds button.on{background:#fff;color:var(--navy);border-color:#fff}
 .qf .pf{flex:none;white-space:nowrap;display:flex;align-items:center;padding-left:16px;color:var(--navy);font-weight:700;font-size:18px;letter-spacing:.06em;font-variant-numeric:tabular-nums}
 .qf input[type=text]{border:0;border-radius:0;padding-left:4px;min-width:0;font-size:18px;letter-spacing:.08em}
@@ -267,7 +268,10 @@ $("#home").onclick = e => {
 /* 항공 화물번호는 G-1-0000 형식: 앞의 G-1-은 자동, 고객은 뒤 4자리만 입력 */
 const AIR_PFX = "G-1-";
 /* 해상 화물번호: 일반 ORA-0000 / 익스프레스 ALT-0000. 종류를 고르고 뒤 4자리만 입력 */
-const KINDS = [["ORA","ORA","general"],["ALT","ALT","express"],["COLD","ALT","cold"],["FRZ","ALT","frozen"]];   // [버튼 id, 번호 앞부분, 이름]
+const KINDS = [["ORA","ORA","general","general"],["ALT","ALT","express","express"],["COLD","ALT","cold","cold"],["FRZ","ALT","frozen","frozen"]];   // [버튼 id, 번호 앞부분, 이름, DB 값]
+const dbKindOf = id => (KINDS.find(x => x[0] === id) || KINDS[0])[3];
+const KIND_KR = { general: "일반", express: "익스프레스", cold: "냉장", frozen: "냉동" };
+const rowKind = r => (r && r.cargo_kind) || kindOf(r && r.cargo_no) || "";
 const pfxOf = k => (KINDS.find(x => x[0] === k) || KINDS[0])[1];
 let SEA_K = "ORA";
 function seaDigits(v){ return String(v ?? "").replace(/^\s*(ora|alt)\s*-?/i, "").replace(/\D/g, "").slice(0, 4); }
@@ -321,7 +325,12 @@ async function search(q){
   lastQ = q;
   const out = $("#out"), m = CM;
   out.innerHTML = `<p class="msg">${T("wait")}</p>`;
-  const { data, error } = await sb.rpc(MODES[m].rpc, { q });
+  let { data, error } = m === "sea"
+    ? await sb.rpc("track_sea_k", { q, k: dbKindOf(SEA_K) })
+    : await sb.rpc(MODES[m].rpc, { q });
+  if (m === "sea" && error && /track_sea_k|PGRST202/.test((error.code || "") + (error.message || ""))) {
+    ({ data, error } = await sb.rpc(MODES[m].rpc, { q }));   // SQL 을 아직 안 넣은 경우: 예전 방식으로 조회
+  }
   if (m !== CM) return;
   if (error) { out.innerHTML = `<p class="msg err">${T("fail")}</p>`; return; }
   if (!data.length) { out.innerHTML = `<p class="msg">${T("none")}${m === "air" && SEA_RE.test(q) ? " " + T("hintSea") : ""}</p>`; return; }
@@ -337,7 +346,8 @@ function card(s, m){
     const cls = i === cur ? "cur" : s[st[0]] ? "done" : "";
     return `<li class="${cls}">${st[n]}<span class="d">${s[st[0]] ? esc(s[st[0]]) : T("plan")}</span></li>`;
   }).join("");
-  const kind = m === "sea" && kindOf(s.cargo_no) ? `<span class="badge">${T(kindOf(s.cargo_no))}</span>` : "";
+  const kk = m === "sea" ? (s.kind || kindOf(s.cargo_no)) : "";
+  const kind = kk ? `<span class="badge">${T(kk)}</span>` : "";
   return `<div class="ship">
     <h2 style="margin-bottom:14px">${T("cargo")} ${esc(s.cargo_no)}${kind}</h2>
     <div class="now">${esc(now)}</div>
@@ -368,6 +378,9 @@ async function showAdmin(){
     <div class="panel">
       <b>${MODES[AM].file} 화물: 엑셀로 한꺼번에 올리기</b>
       <p class="msg"><b>엑셀 파일 이름이 그룹 이름</b>이 됩니다 (예: <b>10-08.xlsx</b> → <b>10-08</b> 그룹). 첫 줄에 <b>화물번호</b>를 쓰고 아래로 화물번호를 입력하세요. 날짜는 올린 뒤 아래 표에서 <b>그룹별로 한 번만</b> 지정하면 그룹 안 모든 화물에 적용됩니다. (엑셀에 단계 날짜 칸이 있어도 되며, 2026-10-09 형식) 이미 있는 화물번호는 새 그룹으로 옮겨집니다.${sea ? " 해상 화물번호는 <b>ORA-0000</b>(일반) 또는 <b>ALT-0000</b>(익스프레스) 형식입니다." : ""}</p>
+      ${sea ? `<div class="bar"><b style="color:var(--navy)">화물 종류</b>
+        <select id="kd"><option value="">자동 (ORA→일반, ALT→익스프레스)</option>${Object.entries(KIND_KR).map(([v, n]) => `<option value="${v}">${n}</option>`).join("")}</select>
+        <span class="msg" style="margin:0">엑셀을 올리거나 한 건을 추가할 때 이 종류로 저장됩니다. 고객은 같은 종류에서만 조회됩니다.</span></div>` : ""}
       <div class="bar"><button class="plain" id="tpl">엑셀 양식 내려받기</button>
         <button id="up">엑셀 파일 올리기</button>
         <input type="file" id="file" accept=".xlsx,.xls,.csv" hidden></div>
@@ -392,6 +405,7 @@ async function showAdmin(){
     if (ALL.some(s => s.cargo_no === cargo_no)) return flash("이미 있는 화물 번호입니다.");
     const grp = $("#ng").value.trim(), row = { cargo_no };
     if (grp) row.group_name = grp;
+    if (sea) row.cargo_kind = $("#kd").value || null;
     const { error } = await sb.from(MODES[AM].tbl).insert(row);
     if (error) return flash("추가하지 못했습니다: " + error.message);
     $("#nc").value = ""; PAGE = 0; loadGrid();
@@ -455,7 +469,8 @@ async function importExcel(file, res){
 
   const grp = file.name.replace(/\.[^.]+$/, "").trim();
   if (!grp) throw new Error("파일 이름이 비어 있습니다.");
-  for (const o of map.values()) o.group_name = grp;
+  const kindSel = sea && $("#kd") ? ($("#kd").value || null) : undefined;
+  for (const o of map.values()) { o.group_name = grp; if (sea) o.cargo_kind = kindSel; }
   const cur = await fetchAll("id,cargo_no");
   const idOf = new Map(cur.filter(s => s.cargo_no).map(s => [s.cargo_no, s.id]));
   const toNew = [], toUpd = [];
@@ -466,7 +481,7 @@ async function importExcel(file, res){
     return;
   }
   if (!toNew.length && !toUpd.length) throw new Error("올릴 화물이 없습니다.");
-  if (!confirm(`[${MODES[AM].file} 화물] '${grp}' 그룹으로 새 화물 ${toNew.length}건을 추가하고 기존 ${toUpd.length}건을 수정합니다. 올릴까요?`)) { res.textContent = ""; return; }
+  if (!confirm(`[${MODES[AM].file} 화물] '${grp}' 그룹${sea ? `(${KIND_KR[kindSel] || "자동"})` : ""}으로 새 화물 ${toNew.length}건을 추가하고 기존 ${toUpd.length}건을 수정합니다. 올릴까요?`)) { res.textContent = ""; return; }
 
   res.textContent = "올리는 중...";
   for (let i = 0; i < toNew.length; i += 500) {
@@ -521,7 +536,7 @@ function groupRow(it, S){
     return `<td><input type="date" data-g="${n}" data-k="${k}" value="${v || ""}" class="${v ? "has" : ""}${v === null ? " mixed" : ""}"${v === null ? ' title="그룹 안 날짜가 서로 다릅니다. 새로 지정하면 모두 같은 날짜로 바뀝니다."' : ""}></td>`;
   }).join("");
   const codes = open ? `<tr><td colspan="${S.length + 2}" class="chips">${it.rows.map(r => `<span>${esc(r.cargo_no)}</span>`).join("")}</td></tr>` : "";
-  return `<tr class="grp"><th><div class="gn">${n}</div><div class="gm"><small>화물 ${it.rows.length}건</small><button class="plain" data-open="${n}">${open ? "코드 닫기" : "코드 보기"}</button></div></th>` +
+  return `<tr class="grp"><th><div class="gn">${n}</div><div class="gm"><small>화물 ${it.rows.length}건${AM === "sea" && rowKind(it.rows[0]) ? " · " + KIND_KR[rowKind(it.rows[0])] : ""}</small><button class="plain" data-open="${n}">${open ? "코드 닫기" : "코드 보기"}</button></div></th>` +
     cells + `<td><button class="plain" data-gdel="${n}">그룹 삭제</button></td></tr>` + codes;
 }
 
@@ -546,7 +561,7 @@ function renderGrid(){
   const rows = show.map(it => {
     if (it.type === "g") return groupRow(it, S);
     const s = it.row;
-    const kd = sea && kindOf(s.cargo_no) ? `<br><small style="font-weight:400">${kindOf(s.cargo_no) === "general" ? "일반" : "익스프레스"}</small>` : "";
+    const kd = sea && rowKind(s) ? `<br><small style="font-weight:400">${KIND_KR[rowKind(s)]}</small>` : "";
     return `<tr><th>${esc(s.cargo_no || "(번호 없음)")}${kd}</th>` +
       S.map(([k]) => `<td><input type="date" data-id="${s.id}" data-k="${k}" value="${s[k] || ""}" class="${s[k] ? "has" : ""}"></td>`).join("") +
       `<td><button class="plain" data-del="${s.id}">삭제</button></td></tr>`;
